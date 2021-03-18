@@ -2,7 +2,7 @@ module TigGame(mainTigGame) where
 
 import Prelude
 
-import Data.Argonaut (decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
+import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
 import Data.Either (Either(..))
 import Data.List.Lazy (List)
@@ -18,6 +18,7 @@ import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff as Aff
 import Effect.Class.Console (log)
 import Effect.Exception (error)
+import EitherHelpers (mapLeft, (<|||>))
 import Halogen (AttrName(..), ClassName(..), liftAff, liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
@@ -122,8 +123,27 @@ data Action =
   | SetIt Player
   | HandleKey H.SubscriptionId KeyboardEvent
 
+-- message types:
+type PlayerRec = { player :: Player }
 type PlayerPosShape = { player :: Player, posShape :: PosShape }
 type It = { it :: Player }
+
+messageToAction :: String -> Either String Action
+messageToAction msg = do
+  json <- (parseJson msg) # (describeErr "Failed to parse message as JSON: ")
+  (parseSetPlayer json <|||> parseSetIt json) # describeErrs "Failed to decode JSON:\n"
+  where
+  parseSetPlayer json = do
+    ({player, posShape} :: PlayerPosShape) <- decodeJson json
+    pure (SetPlayer player posShape)
+  parseSetIt json = do
+    ({it} :: It) <- decodeJson json
+    pure (SetIt it)
+
+  describeErr :: forall b.String -> Either JsonDecodeError b -> Either String b
+  describeErr s = mapLeft (\ err -> s <> (printJsonDecodeError err))
+  describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
+  describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
@@ -230,20 +250,9 @@ rootComponent =
           (map (HandleKey sid) <<< KE.fromEvent)
       
     ReceiveMessageFromPeer msg -> do
-      case parseJson msg of
-        Left err -> liftEffect $ log  $ "Failed to parse message as JSON: " <> (printJsonDecodeError err)
-        Right json ->
-          case decodeJson json of
-            Right ({player, posShape} :: PlayerPosShape) ->
-              handleAction (SetPlayer player posShape)
-            Left err1 -> 
-              case decodeJson json of
-                Right ({it} :: It) ->
-                  handleAction (SetIt it)
-                Left err2 -> 
-                  liftEffect $ log  $ 
-                    "Failed to decode JSON:\n" <> (printJsonDecodeError err1) 
-                    <> "\n" <> (printJsonDecodeError err2)
+      case messageToAction msg of
+        Left err -> liftEffect $ log err
+        Right action -> handleAction action
 
     SetPlayer player posShape -> do
       -- if this is a new player, send out my position for them to see:
