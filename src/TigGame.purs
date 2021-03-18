@@ -8,47 +8,40 @@ import Data.Either (Either(..))
 import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), maybe)
-import Data.Set (Set)
-import Data.Set as Set
+import Data.Maybe (Maybe(..))
 import Data.String as String
+import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Aff (Aff, Milliseconds(..), delay)
+import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Effect.Class.Console (log)
 import Effect.Exception (error)
 import EitherHelpers (mapLeft, (<|||>))
-import Halogen (AttrName(..), ClassName(..), liftAff, liftEffect)
+import Halogen (ClassName(..), liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
-import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
+import TigGame.Lobby (Output(..), Player, Shape)
+import TigGame.Lobby as Lobby
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document) as Web
-import Web.Socket.ReadyState as ReadyState
 import Web.Socket.WebSocket as WS
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
-defaultWSURL :: String
-defaultWSURL = "ws://localhost:3000"
-
-defaultPlayerShape :: String
-defaultPlayerShape = "😷"
--- playerShape = "X"
-
-type Player = Int
-
-playersForSelection :: Array Player
-playersForSelection = [1,2,3]
+mainTigGame :: Effect Unit
+mainTigGame = do
+  HA.runHalogenAff do
+    body <- HA.awaitBody
+    runUI rootComponent unit body
 
 maxX :: Int
 maxX = 20
@@ -56,8 +49,11 @@ maxY :: Int
 maxY = 20
 
 type Pos = { x :: Int, y :: Int }
-type Shape = String
 type PosShape = { pos :: Pos, shape :: Shape }
+
+initialPos :: Player -> Pos
+initialPos player = 
+  { x: 1 + player*5 `mod` maxX, y: 1 + player*5 `mod` maxY }
 
 moveX :: Int -> PosShape -> PosShape
 moveX dx {pos: {x,y}, shape}  = { pos: { x: ((x + (dx - 1)) `mod` maxX) + 1, y}, shape }
@@ -65,48 +61,20 @@ moveX dx {pos: {x,y}, shape}  = { pos: { x: ((x + (dx - 1)) `mod` maxX) + 1, y},
 moveY :: Int -> PosShape -> PosShape
 moveY dy {pos: {x,y}, shape} = { pos: { x, y: ((y + (dy - 1)) `mod` maxY) + 1}, shape }
 
-
-data State = Connect ConnectState | Lobby LobbyState | Play PlayState
-
-updateConnect :: (ConnectState -> ConnectState) -> State -> State
-updateConnect fn = case _ of
-  Connect playState -> Connect $ fn playState
-  state -> state
-
-updateLobby :: (LobbyState -> LobbyState) -> State -> State
-updateLobby fn = case _ of
-  Lobby lobbyState -> Lobby $ fn lobbyState
-  state -> state
-
-updatePlay :: (PlayState -> PlayState) -> State -> State
-updatePlay fn = case _ of
-  Play playState -> Play $ fn playState
-  state -> state
-
-type ConnectState = {  
-  maybeMsg :: Maybe String
-}
-
-type LobbyState = {  
-  ws :: WS.WebSocket
-, shape :: Shape
-, it :: Player
-, players :: Set Player
-}
-
-type PlayState = {
-  ws :: WS.WebSocket
-, myPlayer :: Player
+type State = {
+  m_ws :: Maybe WS.WebSocket
+, m_myPlayer :: Maybe Player
 , it :: Player
 , blobs :: Map Player PosShape
 }
 
 initialState :: State
-initialState = Connect { maybeMsg: Nothing }
-
-initialPos :: Player -> Pos
-initialPos player = 
-  { x: 1 + player*5 `mod` maxX, y: 1 + player*5 `mod` maxY }
+initialState =  
+  { m_ws: Nothing 
+  , m_myPlayer: Nothing
+  , it: 1
+  , blobs: Map.empty
+  }
 
 byPos :: Map Player PosShape -> Map Pos { player :: Player, shape :: String }
 byPos blobs = 
@@ -115,16 +83,13 @@ byPos blobs =
   (Map.toUnfoldable blobs :: List _)
 
 data Action =
-    SetWSURL String
-  | SetShape Shape
-  | SetMyPlayer Player Shape
+    HandleLobby Lobby.Output
   | ReceiveMessageFromPeer String
   | SetPlayer Player PosShape
   | SetIt Player
   | HandleKey H.SubscriptionId KeyboardEvent
 
 -- message types:
-type PlayerRec = { player :: Player }
 type PlayerPosShape = { player :: Player, posShape :: PosShape }
 type It = { it :: Player }
 
@@ -145,6 +110,13 @@ messageToAction msg = do
   describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
   describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
+data LobbyP
+
+_lobby :: SProxy "lobby"
+_lobby = SProxy
+
+type Slots = ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
+
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
   H.mkComponent
@@ -153,40 +125,12 @@ rootComponent =
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
-      { handleAction = handleAction
-      , initialize = Just (SetWSURL defaultWSURL) }
+      { handleAction = handleAction }
     }
   where
-  render (Connect {maybeMsg}) =
-    HH.div [] [ enterWSURL ]
-    where
-    enterWSURL = do
-      HH.div_ [
-        HH.div_ [HH.span_ 
-          [HH.text "Enter web-socket URL: ws://", 
-          HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
-        , HH.div [HP.class_ (ClassName "error")] [HH.text $ maybe "" identity maybeMsg]]
-  render (Lobby {shape, it, players}) =
-    HH.div_ [ 
-      HH.div_ [choosePlayer], 
-      HH.div_ [chooseShape]
-    ]
-    where
-    choosePlayer = HH.table_ $ [HH.tr_ $ map playerButton playersForSelection]
-    playerButton player = 
-      HH.td_ [
-        HH.button 
-          [ HP.title label, 
-            HP.enabled (not $ player `Set.member` players),
-            HE.onClick \_ -> Just (SetMyPlayer player shape)] 
-          [ HH.text label ]]
-      where
-      label = "Player " <> show player
-    chooseShape =
-      HH.div_ [
-        HH.text "My player's Unicode character:",
-        HH.input [HP.value shape, HP.attr (AttrName "size") "1", HE.onValueInput (Just <<< SetShape) ]]
-  render (Play {myPlayer, it, blobs}) =
+  render {m_myPlayer: Nothing} =
+    HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
+  render {m_myPlayer: Just myPlayer, it, blobs} =
     HH.div [] [ gameBoard ]
     where
     gameBoard = 
@@ -208,39 +152,23 @@ rootComponent =
 
 
   handleAction = case _ of
-    SetWSURL wsURL -> do
-      ws <- liftEffect $ WS.create wsURL []
-      liftAff $ delay (Milliseconds 100.0) -- allow ws to initialise
-      rs <- liftEffect $ WS.readyState ws
-      if rs /= ReadyState.Open
-        then do
-          H.modify_ $ updateConnect $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
-        else do
-          H.put $ Lobby { ws, shape: defaultPlayerShape, it: 1, players: Set.empty }
+    HandleLobby (Connected ws) -> do
+      H.modify_ $ \st -> st { m_ws = Just ws }
+      -- start listening to the web socket:
+      void $ H.subscribe $
+        ES.EventSource.affEventSource \ emitter -> do
+          fiber <- Aff.forkAff $ do
+            setupWSListener ws (\msg -> ES.EventSource.emit emitter (ReceiveMessageFromPeer msg))
+          pure $ ES.EventSource.Finalizer do
+            Aff.killFiber (error "Event source finalized") fiber
 
-          -- start listening to the web socket:
-          void $ H.subscribe $
-            ES.EventSource.affEventSource \ emitter -> do
-              fiber <- Aff.forkAff $ do
-                setupWSListener ws (\msg -> ES.EventSource.emit emitter (ReceiveMessageFromPeer msg))
-              pure $ ES.EventSource.Finalizer do
-                Aff.killFiber (error "Event source finalized") fiber
-
-    SetShape shape -> do
-      H.modify_ $ updateLobby $ \st -> st { shape = shape }
-    SetMyPlayer player shape -> do
-      st <- H.get
-      case st of
-        Lobby {ws, it} -> do
-          -- set the this player to the state:
-          let posShape = { pos: initialPos player, shape }
-          H.put $ Play { ws, myPlayer: player, it, blobs: Map.singleton player posShape }
-          -- let others know our position:
-          liftEffect $ sendMyPos ws {player, posShape}
-          -- start listening to keyboard events:
-        _ -> do
-          liftEffect $ log $ "MyPlayer called at an illegal state"
-
+    HandleLobby (SelectedPlayer player shape) -> do
+      -- set my player to the state:
+      let posShape = { pos: initialPos player, shape }
+      H.modify_ $ \ st -> st { m_myPlayer = Just player, blobs = Map.singleton player posShape }
+      -- let others know our position:
+      {m_ws} <- H.get
+      liftEffect $ sendMyPos m_ws {player, posShape}
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
       H.subscribe' \sid ->
@@ -255,38 +183,32 @@ rootComponent =
         Right action -> handleAction action
 
     SetPlayer player posShape -> do
+      -- let the lobby know of this player:
+      void $ H.query _lobby 0 $ H.tell (Lobby.OtherPlayer player)
+
+      {m_ws,m_myPlayer,it,blobs} <- H.get
       -- if this is a new player, send out my position for them to see:
-      state <- H.get
-      case state of
-        Connect _ -> 
-          liftEffect $ log $ "SetPlayer called before connection established..."
-        Lobby {it,players} ->
-          H.modify_ $ updateLobby $ \st -> st {players = Set.insert player st.players}
-        Play (playState@{ws,myPlayer,it,blobs}) -> do
-          case player `Map.member` blobs of
-            true -> pure unit
-            false -> do
-              handleMoveBy identity -- ie do not move, but still send out our position
-              liftEffect $ sendIt ws it -- and send them also who is "it"
-          -- update state:
-          H.put $ Play $ playState { blobs = Map.insert player posShape blobs }
-          -- if I am it, check whether I caught them:
-          let {pos} = posShape
-          case Map.lookup myPlayer blobs of
-            Nothing -> pure unit
-            Just {pos: myPos} -> do
-              if myPlayer == it && pos == myPos
-                then do
-                  -- gotcha! update it locally:
-                  H.modify_ $ updatePlay $ \st -> st { it = player }
-                  -- and announce new "it":
-                  liftEffect $ sendIt ws player
-                else pure unit
+      case player `Map.member` blobs of
+        true -> pure unit
+        false -> do
+          handleMoveBy identity -- ie do not move, but still send out our position
+          liftEffect $ sendIt m_ws it -- and send them also who is "it"
+      -- update state:
+      H.modify_ $ \ st -> st { blobs = Map.insert player posShape st.blobs }
+      -- if I am it, check whether I caught them:
+      let {pos} = posShape
+      case lookupMaybe m_myPlayer blobs of
+        Nothing -> pure unit
+        Just (Tuple myPlayer {pos: myPos}) -> do
+          if myPlayer == it && pos == myPos
+            then do
+              -- gotcha! update it locally:
+              H.modify_ $ \st -> st { it = player }
+              -- and announce new "it":
+              liftEffect $ sendIt m_ws player
+            else pure unit
     SetIt it -> do
-      H.modify_ $ 
-        (updateLobby $ \st -> st { it = it })
-        <<<
-        (updatePlay $ \st -> st { it = it })
+      H.modify_ $ \st -> st { it = it }
     HandleKey _sid ev -> do
       case KE.key ev of
         "ArrowLeft" -> handleMoveBy (moveX (-1))
@@ -296,42 +218,39 @@ rootComponent =
         _ -> pure unit
 
   handleMoveBy fn = do
-    state <- H.get
-    case state of
-      Play {ws,myPlayer,it,blobs} ->
-        case Map.lookup myPlayer blobs of
-          Nothing -> pure unit
-          Just posShape -> do
-            -- make the move locally:
-            let newPosShape = fn posShape
-            H.modify_ $ updatePlay $ \st -> st { blobs = Map.insert myPlayer newPosShape st.blobs }
-            -- send new position to peers:
-            liftEffect $ sendMyPos ws {player: myPlayer, posShape: newPosShape}
-            -- if I am it, check whether I caught someone:
-            if myPlayer == it
-              then do
-                let {pos} = newPosShape
-                case Map.lookup pos (byPos blobs) of
-                  Just {player} | player /= myPlayer -> do
-                    -- gotcha! update it locally:
-                    H.modify_ $ updatePlay \st -> st { it = player }
-                    -- and announce new "it":
-                    liftEffect $ sendIt ws player
-                  _ -> pure unit
-              else pure unit
-      _ -> pure unit    
+    {m_ws,m_myPlayer,it,blobs} <- H.get
+    case lookupMaybe m_myPlayer blobs of
+      Nothing -> pure unit
+      Just (Tuple myPlayer posShape) -> do
+        -- make the move locally:
+        let newPosShape = fn posShape
+        H.modify_ $ \st -> st { blobs = Map.insert myPlayer newPosShape st.blobs }
+        -- send new position to peers:
+        liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
+        -- if I am it, check whether I caught someone:
+        if myPlayer == it
+          then do
+            let {pos} = newPosShape
+            case Map.lookup pos (byPos blobs) of
+              Just {player} | player /= myPlayer -> do
+                -- gotcha! update it locally:
+                H.modify_ $ \st -> st { it = player }
+                -- and announce new "it":
+                liftEffect $ sendIt m_ws player
+              _ -> pure unit
+          else pure unit
 
-  sendMyPos ws playerPosShape = do
+  sendMyPos (Just ws) playerPosShape = do
       WS.sendString ws $ stringify $ encodeJson playerPosShape
+  sendMyPos _ _ = pure unit
 
-  sendIt ws (it :: Player) = do
+  sendIt (Just ws) (it :: Player) = do
       WS.sendString ws $ stringify $ encodeJson {it}
+  sendIt _ _ = pure unit
 
--- MAIN
-
-mainTigGame :: Effect Unit
-mainTigGame = do
-  HA.runHalogenAff do
-    body <- HA.awaitBody
-    runUI rootComponent unit body
-    
+lookupMaybe :: forall k v . (Ord k) => Maybe k -> Map k v -> Maybe (Tuple k v)
+lookupMaybe (Just a) map = 
+  case Map.lookup a map of
+    Just b -> Just (Tuple a b)
+    _ -> Nothing
+lookupMaybe _ _ = Nothing
