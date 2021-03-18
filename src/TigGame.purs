@@ -55,7 +55,7 @@ type PosShape = { pos :: Pos, shape :: Shape }
 
 initialPos :: Player -> Pos
 initialPos player = 
-  { x: 1 + player*5 `mod` maxX, y: 1 + player*5 `mod` maxY }
+  { x: 1 + (player*3) `mod` maxX, y: 1 + (player*3) `mod` maxY }
 
 moveX :: Int -> PosShape -> PosShape
 moveX dx {pos: {x,y}, shape}  = { pos: { x: ((x + (dx - 1)) `mod` maxX) + 1, y}, shape }
