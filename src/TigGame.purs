@@ -1,4 +1,4 @@
-module TickGame(mainTickGame) where
+module TigGame(mainTickGame) where
 
 import Prelude
 
