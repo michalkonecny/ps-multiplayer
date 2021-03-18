@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
+import Data.DateTime.Instant (Instant)
 import Data.Either (Either(..))
 import Data.List.Lazy (List)
 import Data.Map (Map)
@@ -19,6 +20,7 @@ import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class.Console (log)
 import Effect.Exception (error)
+import Effect.Now (now)
 import EitherHelpers (mapLeft, (<|||>))
 import Halogen (ClassName(..), liftEffect)
 import Halogen as H
@@ -52,6 +54,7 @@ maxY = 20
 
 type Pos = { x :: Int, y :: Int }
 type PosShape = { pos :: Pos, shape :: Shape }
+type PosShapeTime = { posShape :: PosShape, time :: Instant }
 
 initialPos :: Player -> Pos
 initialPos player = 
@@ -67,7 +70,7 @@ type State = {
   m_ws :: Maybe WS.WebSocket
 , m_myPlayer :: Maybe Player
 , it :: Player
-, players :: Map Player PosShape
+, players :: Map Player PosShapeTime
 }
 
 initialState :: State
@@ -78,10 +81,10 @@ initialState =
   , players: Map.empty
   }
 
-byPos :: Map Player PosShape -> Map Pos { player :: Player, shape :: String }
+byPos :: Map Player PosShapeTime -> Map Pos { player :: Player, shape :: String }
 byPos players = 
   Map.fromFoldable $ 
-  map (\(Tuple player {pos, shape}) -> Tuple pos {player, shape}) $ 
+  map (\(Tuple player {posShape: {pos, shape}}) -> Tuple pos {player, shape}) $ 
   (Map.toUnfoldable players :: List _)
 
 data Action =
@@ -168,7 +171,8 @@ rootComponent =
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
       let posShape = { pos: initialPos player, shape }
-      H.modify_ $ \ st -> st { m_myPlayer = Just player, players = Map.singleton player posShape }
+      time <- liftEffect now
+      H.modify_ $ \ st -> st { m_myPlayer = Just player, players = Map.singleton player {posShape, time} }
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, posShape}
@@ -190,6 +194,9 @@ rootComponent =
         Right action -> handleAction action
 
     SetPlayer player posShape -> do
+      -- get current time:
+      time <- liftEffect now
+
       -- let the lobby know of this player:
       void $ H.query _lobby 0 $ H.tell (Lobby.OtherPlayer player)
 
@@ -201,12 +208,12 @@ rootComponent =
           handleMoveBy identity -- ie do not move, but still send out our position
           liftEffect $ sendIt m_ws it -- and send them also who is "it"
       -- update state:
-      H.modify_ $ \ st -> st { players = Map.insert player posShape st.players }
+      H.modify_ $ \ st -> st { players = Map.insert player {posShape, time} st.players }
       -- if I am it, check whether I caught them:
       let {pos} = posShape
       case lookupMaybe m_myPlayer players of
         Nothing -> pure unit
-        Just (Tuple myPlayer {pos: myPos}) -> do
+        Just (Tuple myPlayer {posShape: {pos: myPos}}) -> do
           if myPlayer == it && pos == myPos
             then do
               -- gotcha! update it locally:
@@ -224,16 +231,19 @@ rootComponent =
         "ArrowDown" -> handleMoveBy (moveY (1))
         _ -> pure unit
     Pulse -> do
+      -- let others know we are still alive:
       handleMoveBy identity
+      -- delete players who have not sent an update for some time:
+      -- TODO
 
   handleMoveBy fn = do
     {m_ws,m_myPlayer,it,players} <- H.get
     case lookupMaybe m_myPlayer players of
       Nothing -> pure unit
-      Just (Tuple myPlayer posShape) -> do
+      Just (Tuple myPlayer {posShape, time}) -> do
         -- make the move locally:
         let newPosShape = fn posShape
-        H.modify_ $ \st -> st { players = Map.insert myPlayer newPosShape st.players }
+        H.modify_ $ \st -> st { players = Map.insert myPlayer {posShape: newPosShape, time} st.players }
         -- send new position to peers:
         liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
         -- if I am it, check whether I caught someone:

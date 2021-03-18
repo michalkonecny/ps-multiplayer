@@ -7,8 +7,10 @@ You can edit this file as you like.
   [ "aff-coroutines"
   , "argonaut"
   , "console"
+  , "datetime"
   , "effect"
   , "halogen"
+  , "now"
   , "psci-support"
   , "web-socket"
   ]
