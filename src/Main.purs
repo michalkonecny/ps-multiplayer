@@ -3,7 +3,7 @@ module Main where
 import Prelude
 
 import Effect (Effect)
-import TickGame (mainTickGame)
+import TigGame (mainTigGame)
 
 main :: Effect Unit
-main = mainTickGame
+main = mainTigGame

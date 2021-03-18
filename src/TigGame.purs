@@ -1,4 +1,4 @@
-module TigGame(mainTickGame) where
+module TigGame(mainTigGame) where
 
 import Prelude
 
@@ -316,8 +316,8 @@ rootComponent =
 
 -- MAIN
 
-mainTickGame :: Effect Unit
-mainTickGame = do
+mainTigGame :: Effect Unit
+mainTigGame = do
   HA.runHalogenAff do
     body <- HA.awaitBody
     runUI rootComponent unit body
