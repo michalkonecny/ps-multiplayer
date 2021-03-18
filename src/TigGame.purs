@@ -67,7 +67,7 @@ type State = {
   m_ws :: Maybe WS.WebSocket
 , m_myPlayer :: Maybe Player
 , it :: Player
-, blobs :: Map Player PosShape
+, players :: Map Player PosShape
 }
 
 initialState :: State
@@ -75,14 +75,14 @@ initialState =
   { m_ws: Nothing 
   , m_myPlayer: Nothing
   , it: 1
-  , blobs: Map.empty
+  , players: Map.empty
   }
 
 byPos :: Map Player PosShape -> Map Pos { player :: Player, shape :: String }
-byPos blobs = 
+byPos players = 
   Map.fromFoldable $ 
   map (\(Tuple player {pos, shape}) -> Tuple pos {player, shape}) $ 
-  (Map.toUnfoldable blobs :: List _)
+  (Map.toUnfoldable players :: List _)
 
 data Action =
     HandleLobby Lobby.Output
@@ -133,7 +133,7 @@ rootComponent =
   where
   render {m_myPlayer: Nothing} =
     HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
-  render {m_myPlayer: Just myPlayer, it, blobs} =
+  render {m_myPlayer: Just myPlayer, it, players} =
     HH.div [] [ gameBoard ]
     where
     gameBoard = 
@@ -145,7 +145,7 @@ rootComponent =
         where
         posXY = {x,y}
         Tuple cellText cellClass = 
-          case posXY `Map.lookup` byPos blobs of
+          case posXY `Map.lookup` byPos players of
             Just {player, shape} 
               | player == it && it == myPlayer -> Tuple shape "itMyPlayerCell"
               | player == it -> Tuple shape "itPlayerCell"
@@ -168,7 +168,7 @@ rootComponent =
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
       let posShape = { pos: initialPos player, shape }
-      H.modify_ $ \ st -> st { m_myPlayer = Just player, blobs = Map.singleton player posShape }
+      H.modify_ $ \ st -> st { m_myPlayer = Just player, players = Map.singleton player posShape }
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, posShape}
@@ -193,18 +193,18 @@ rootComponent =
       -- let the lobby know of this player:
       void $ H.query _lobby 0 $ H.tell (Lobby.OtherPlayer player)
 
-      {m_ws,m_myPlayer,it,blobs} <- H.get
+      {m_ws,m_myPlayer,it,players} <- H.get
       -- if this is a new player, send out my position for them to see:
-      case player `Map.member` blobs of
+      case player `Map.member` players of
         true -> pure unit
         false -> do
           handleMoveBy identity -- ie do not move, but still send out our position
           liftEffect $ sendIt m_ws it -- and send them also who is "it"
       -- update state:
-      H.modify_ $ \ st -> st { blobs = Map.insert player posShape st.blobs }
+      H.modify_ $ \ st -> st { players = Map.insert player posShape st.players }
       -- if I am it, check whether I caught them:
       let {pos} = posShape
-      case lookupMaybe m_myPlayer blobs of
+      case lookupMaybe m_myPlayer players of
         Nothing -> pure unit
         Just (Tuple myPlayer {pos: myPos}) -> do
           if myPlayer == it && pos == myPos
@@ -227,20 +227,20 @@ rootComponent =
       handleMoveBy identity
 
   handleMoveBy fn = do
-    {m_ws,m_myPlayer,it,blobs} <- H.get
-    case lookupMaybe m_myPlayer blobs of
+    {m_ws,m_myPlayer,it,players} <- H.get
+    case lookupMaybe m_myPlayer players of
       Nothing -> pure unit
       Just (Tuple myPlayer posShape) -> do
         -- make the move locally:
         let newPosShape = fn posShape
-        H.modify_ $ \st -> st { blobs = Map.insert myPlayer newPosShape st.blobs }
+        H.modify_ $ \st -> st { players = Map.insert myPlayer newPosShape st.players }
         -- send new position to peers:
         liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
         -- if I am it, check whether I caught someone:
         if myPlayer == it
           then do
             let {pos} = newPosShape
-            case Map.lookup pos (byPos blobs) of
+            case Map.lookup pos (byPos players) of
               Just {player} | player /= myPlayer -> do
                 -- gotcha! update it locally:
                 H.modify_ $ \st -> st { it = player }
