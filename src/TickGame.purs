@@ -16,7 +16,7 @@ import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff as Aff
 import Effect.Class.Console (log)
 import Effect.Exception (error)
-import Halogen (ClassName(..), liftAff, liftEffect)
+import Halogen (AttrName(..), ClassName(..), liftAff, liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
@@ -38,8 +38,8 @@ import Web.UIEvent.KeyboardEvent.EventTypes as KET
 defaultWSURL :: String
 defaultWSURL = "ws://localhost:3000"
 
-playerShape :: String
-playerShape = "😷"
+defaultPlayerShape :: String
+defaultPlayerShape = "😷"
 -- playerShape = "X"
 
 type Player = Int
@@ -53,7 +53,8 @@ maxY :: Int
 maxY = 20
 
 type Pos = { x :: Int, y :: Int }
-type PosShape = { pos :: Pos, shape :: String }
+type Shape = String
+type PosShape = { pos :: Pos, shape :: Shape }
 
 moveX :: Int -> PosShape -> PosShape
 moveX dx {pos: {x,y}, shape}  = { pos: { x: ((x + (dx - 1)) `mod` maxX) + 1, y}, shape }
@@ -85,6 +86,7 @@ type ConnectState = {
 
 type EntryState = {  
   ws :: WS.WebSocket
+, shape :: Shape
 , it :: Player
 , blobs :: Map Player PosShape
 }
@@ -99,9 +101,9 @@ type PlayState = {
 initialState :: State
 initialState = Connect { maybeMsg: Nothing }
 
-initialPosShape :: Player -> PosShape
-initialPosShape player = 
-  { pos: { x: 1 + player*5 `mod` maxX, y: 1 + player*5 `mod` maxY }, shape: playerShape }
+initialPos :: Player -> Pos
+initialPos player = 
+  { x: 1 + player*5 `mod` maxX, y: 1 + player*5 `mod` maxY }
 
 byPos :: Map Player PosShape -> Map Pos { player :: Player, shape :: String }
 byPos blobs = 
@@ -111,7 +113,8 @@ byPos blobs =
 
 data Action =
     SetWSURL String
-  | SetMyPlayer Player
+  | SetShape Shape
+  | SetMyPlayer Player Shape
   | ReceiveMessageFromPeer String
   | SetPlayer Player PosShape
   | SetIt Player
@@ -141,13 +144,24 @@ rootComponent =
           [HH.text "Enter web-socket URL: ws://", 
           HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
         , HH.div [HP.class_ (ClassName "error")] [HH.text $ maybe "" identity maybeMsg]]
-  render (Entry {it, blobs}) =
-    HH.div [] [ choosePlayer ]
+  render (Entry {shape, it, blobs}) =
+    HH.div_ [ 
+      HH.div_ [choosePlayer], 
+      HH.div_ [chooseShape]
+    ]
     where
     choosePlayer = HH.table_ $ [HH.tr_ $ map playerButton playersForSelection]
-    playerButton player = HH.td_ $ [HH.button [HP.title label, HE.onClick \_ -> Just (SetMyPlayer player)] [ HH.text label ]]
+    playerButton player = 
+      HH.td_ [
+        HH.button 
+          [HP.title label, HE.onClick \_ -> Just (SetMyPlayer player shape)] 
+          [ HH.text label ]]
       where
       label = "Player " <> show player
+    chooseShape =
+      HH.div_ [
+        HH.text "My player's Unicode character:",
+        HH.input [HP.value shape, HP.attr (AttrName "size") "1", HE.onValueInput (Just <<< SetShape) ]]
   render (Play {myPlayer, it, blobs}) =
     HH.div [] [ gameBoard ]
     where
@@ -178,7 +192,7 @@ rootComponent =
         then do
           H.modify_ $ updateConnect $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
-          H.put $ Entry { ws, it: 1, blobs: Map.empty }
+          H.put $ Entry { ws, shape: defaultPlayerShape, it: 1, blobs: Map.empty }
 
           -- start listening to the web socket:
           void $ H.subscribe $
@@ -188,12 +202,14 @@ rootComponent =
               pure $ ES.EventSource.Finalizer do
                 Aff.killFiber (error "Event source finalized") fiber
 
-    SetMyPlayer player -> do
+    SetShape shape -> do
+      H.modify_ $ updateEntry $ \st -> st { shape = shape }
+    SetMyPlayer player shape -> do
       st <- H.get
       case st of
         Entry {ws, it, blobs} -> do
           -- set the this player to the state:
-          let posShape = initialPosShape player
+          let posShape = { pos: initialPos player, shape }
           H.put $ Play { ws, myPlayer: player, it, blobs: Map.insert player posShape blobs }
           -- let others know our position:
           liftEffect $ sendMyPos ws {player, posShape}
@@ -255,7 +271,8 @@ rootComponent =
                 else pure unit
     SetIt it -> do
       H.modify_ $ 
-        (updateEntry $ \st -> st { it = it }) <<<
+        (updateEntry $ \st -> st { it = it })
+        <<<
         (updatePlay $ \st -> st { it = it })
     HandleKey _sid ev -> do
       case KE.key ev of
