@@ -8,7 +8,7 @@ import Data.Either (Either(..))
 import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -62,17 +62,26 @@ moveY :: Int -> PosShape -> PosShape
 moveY dy {pos: {x,y}, shape} = { pos: { x, y: ((y + (dy - 1)) `mod` maxY) + 1}, shape }
 
 
-data State = Connect | Entry EntryState | Play PlayState
+data State = Connect ConnectState | Entry EntryState | Play PlayState
 
-updatePlay :: (PlayState -> PlayState) -> State -> State
-updatePlay fn = case _ of
-  Play playState -> Play $ fn playState
+updateConnect :: (ConnectState -> ConnectState) -> State -> State
+updateConnect fn = case _ of
+  Connect playState -> Connect $ fn playState
   state -> state
 
 updateEntry :: (EntryState -> EntryState) -> State -> State
 updateEntry fn = case _ of
   Entry entryState -> Entry $ fn entryState
   state -> state
+
+updatePlay :: (PlayState -> PlayState) -> State -> State
+updatePlay fn = case _ of
+  Play playState -> Play $ fn playState
+  state -> state
+
+type ConnectState = {  
+  maybeMsg :: Maybe String
+}
 
 type EntryState = {  
   ws :: WS.WebSocket
@@ -88,7 +97,7 @@ type PlayState = {
 }
 
 initialState :: State
-initialState = Connect
+initialState = Connect { maybeMsg: Nothing }
 
 initialPosShape :: Player -> PosShape
 initialPosShape player = 
@@ -123,13 +132,15 @@ rootComponent =
       , initialize = Just (SetWSURL defaultWSURL) }
     }
   where
-  render Connect =
+  render (Connect {maybeMsg}) =
     HH.div [] [ enterWSURL ]
     where
-    enterWSURL = 
-      HH.div_ [HH.span_ 
-        [HH.text "Enter web-socket URL: ws://", 
-         HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
+    enterWSURL = do
+      HH.div_ [
+        HH.div_ [HH.span_ 
+          [HH.text "Enter web-socket URL: ws://", 
+          HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
+        , HH.div [HP.class_ (ClassName "error")] [HH.text $ maybe "" identity maybeMsg]]
   render (Entry {it, blobs}) =
     HH.div [] [ choosePlayer ]
     where
@@ -165,7 +176,7 @@ rootComponent =
       rs <- liftEffect $ WS.readyState ws
       if rs /= ReadyState.Open
         then do
-          liftEffect $ log $ "failed to open web-socket at " <> wsURL
+          H.modify_ $ updateConnect $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
           H.put $ Entry { ws, it: 1, blobs: Map.empty }
 
@@ -218,7 +229,7 @@ rootComponent =
       -- if this is a new player, send out my position for them to see:
       state <- H.get
       case state of
-        Connect -> 
+        Connect _ -> 
           liftEffect $ log $ "SetPlayer called before connection established..."
         Entry {it,blobs} ->
           H.modify_ $ updateEntry $ \st -> st {blobs = Map.insert player posShape st.blobs}
