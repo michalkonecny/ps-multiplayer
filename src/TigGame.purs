@@ -9,6 +9,8 @@ import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe)
+import Data.Set (Set)
+import Data.Set as Set
 import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -63,16 +65,16 @@ moveY :: Int -> PosShape -> PosShape
 moveY dy {pos: {x,y}, shape} = { pos: { x, y: ((y + (dy - 1)) `mod` maxY) + 1}, shape }
 
 
-data State = Connect ConnectState | Entry EntryState | Play PlayState
+data State = Connect ConnectState | Lobby LobbyState | Play PlayState
 
 updateConnect :: (ConnectState -> ConnectState) -> State -> State
 updateConnect fn = case _ of
   Connect playState -> Connect $ fn playState
   state -> state
 
-updateEntry :: (EntryState -> EntryState) -> State -> State
-updateEntry fn = case _ of
-  Entry entryState -> Entry $ fn entryState
+updateLobby :: (LobbyState -> LobbyState) -> State -> State
+updateLobby fn = case _ of
+  Lobby lobbyState -> Lobby $ fn lobbyState
   state -> state
 
 updatePlay :: (PlayState -> PlayState) -> State -> State
@@ -84,11 +86,11 @@ type ConnectState = {
   maybeMsg :: Maybe String
 }
 
-type EntryState = {  
+type LobbyState = {  
   ws :: WS.WebSocket
 , shape :: Shape
 , it :: Player
-, blobs :: Map Player PosShape
+, players :: Set Player
 }
 
 type PlayState = {
@@ -144,7 +146,7 @@ rootComponent =
           [HH.text "Enter web-socket URL: ws://", 
           HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
         , HH.div [HP.class_ (ClassName "error")] [HH.text $ maybe "" identity maybeMsg]]
-  render (Entry {shape, it, blobs}) =
+  render (Lobby {shape, it, players}) =
     HH.div_ [ 
       HH.div_ [choosePlayer], 
       HH.div_ [chooseShape]
@@ -154,7 +156,9 @@ rootComponent =
     playerButton player = 
       HH.td_ [
         HH.button 
-          [HP.title label, HE.onClick \_ -> Just (SetMyPlayer player shape)] 
+          [ HP.title label, 
+            HP.enabled (not $ player `Set.member` players),
+            HE.onClick \_ -> Just (SetMyPlayer player shape)] 
           [ HH.text label ]]
       where
       label = "Player " <> show player
@@ -192,7 +196,7 @@ rootComponent =
         then do
           H.modify_ $ updateConnect $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
-          H.put $ Entry { ws, shape: defaultPlayerShape, it: 1, blobs: Map.empty }
+          H.put $ Lobby { ws, shape: defaultPlayerShape, it: 1, players: Set.empty }
 
           -- start listening to the web socket:
           void $ H.subscribe $
@@ -203,14 +207,14 @@ rootComponent =
                 Aff.killFiber (error "Event source finalized") fiber
 
     SetShape shape -> do
-      H.modify_ $ updateEntry $ \st -> st { shape = shape }
+      H.modify_ $ updateLobby $ \st -> st { shape = shape }
     SetMyPlayer player shape -> do
       st <- H.get
       case st of
-        Entry {ws, it, blobs} -> do
+        Lobby {ws, it} -> do
           -- set the this player to the state:
           let posShape = { pos: initialPos player, shape }
-          H.put $ Play { ws, myPlayer: player, it, blobs: Map.insert player posShape blobs }
+          H.put $ Play { ws, myPlayer: player, it, blobs: Map.singleton player posShape }
           -- let others know our position:
           liftEffect $ sendMyPos ws {player, posShape}
           -- start listening to keyboard events:
@@ -247,8 +251,8 @@ rootComponent =
       case state of
         Connect _ -> 
           liftEffect $ log $ "SetPlayer called before connection established..."
-        Entry {it,blobs} ->
-          H.modify_ $ updateEntry $ \st -> st {blobs = Map.insert player posShape st.blobs}
+        Lobby {it,players} ->
+          H.modify_ $ updateLobby $ \st -> st {players = Set.insert player st.players}
         Play (playState@{ws,myPlayer,it,blobs}) -> do
           case player `Map.member` blobs of
             true -> pure unit
@@ -271,7 +275,7 @@ rootComponent =
                 else pure unit
     SetIt it -> do
       H.modify_ $ 
-        (updateEntry $ \st -> st { it = it })
+        (updateLobby $ \st -> st { it = it })
         <<<
         (updatePlay $ \st -> st { it = it })
     HandleKey _sid ev -> do
