@@ -27,7 +27,7 @@ type Player = Int
 type Shape = String
 
 playersForSelection :: Array Player
-playersForSelection = [1,2,3]
+playersForSelection = [1,2,3,4,5]
 
 data State = Connecting ConnectingState | SelectingPlayer SelectingPlayerState
 
