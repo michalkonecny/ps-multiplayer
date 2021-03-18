@@ -1,5 +1,7 @@
 -- adapted from https://github.com/purescript-halogen/purescript-halogen/blob/master/examples/driver-websockets/src/Main.purs
-module HalogenWS(setupWSListener,RootQuery(..)) where
+module WSListener
+(setupWSListener) 
+where
 
 import Prelude
 
@@ -11,19 +13,16 @@ import Data.Foldable (for_)
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Aff)
 import Foreign (F, Foreign, readString, unsafeToForeign)
-import Halogen as H
-import Halogen.Aff as HA
 import Web.Event.EventTarget as EET
 import Web.Socket.Event.EventTypes as WSET
 import Web.Socket.Event.MessageEvent as ME
 import Web.Socket.WebSocket as WS
 
 -- Setup a listener on the given web socket that sends all messages to the given Halogen IO as a `ReceiveMessage' query.
-setupWSListener :: forall output. WS.WebSocket -> HA.HalogenIO RootQuery output Aff -> Aff Unit
-setupWSListener ws io =
-  CR.runProcess (wsProducer ws CR.$$ wsConsumer io.query)
-
-data RootQuery a = ReceiveMessage String a
+-- setupWSListener :: forall output. WS.WebSocket -> HA.HalogenIO RootQuery output Aff -> Aff Unit
+setupWSListener :: forall a. WS.WebSocket -> (String -> Aff a) -> Aff Unit
+setupWSListener ws query =
+  CR.runProcess (wsProducer ws CR.$$ wsConsumer query)
 
 -- A producer coroutine that emits messages that arrive from the websocket.
 wsProducer :: WS.WebSocket -> CR.Producer String Aff Unit
@@ -46,7 +45,7 @@ wsProducer ws =
 -- A consumer coroutine that takes the `query` function from our component IO
 -- record and sends `ReceiveMessage` queries in when it receives inputs from the
 -- producer.
-wsConsumer :: (forall a. RootQuery a -> Aff (Maybe a)) -> CR.Consumer String Aff Unit
+wsConsumer :: forall a . (String -> Aff a) -> CR.Consumer String Aff Unit
 wsConsumer query = CR.consumer \msg -> do
-  void $ query $ H.tell $ ReceiveMessage msg
+  void $ query msg
   pure Nothing
