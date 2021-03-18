@@ -2,6 +2,7 @@ module TigGame(mainTigGame) where
 
 import Prelude
 
+import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
 import Data.Either (Either(..))
@@ -15,6 +16,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import Effect.Aff.Class (class MonadAff)
 import Effect.Class.Console (log)
 import Effect.Exception (error)
 import EitherHelpers (mapLeft, (<|||>))
@@ -88,6 +90,7 @@ data Action =
   | SetPlayer Player PosShape
   | SetIt Player
   | HandleKey H.SubscriptionId KeyboardEvent
+  | Pulse
 
 -- message types:
 type PlayerPosShape = { player :: Player, posShape :: PosShape }
@@ -169,6 +172,10 @@ rootComponent =
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, posShape}
+
+      -- start pulse timer:
+      void $ H.subscribe pulseTimer
+
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
       H.subscribe' \sid ->
@@ -216,6 +223,8 @@ rootComponent =
         "ArrowUp" -> handleMoveBy (moveY (-1))
         "ArrowDown" -> handleMoveBy (moveY (1))
         _ -> pure unit
+    Pulse -> do
+      handleMoveBy identity
 
   handleMoveBy fn = do
     {m_ws,m_myPlayer,it,blobs} <- H.get
@@ -247,6 +256,16 @@ rootComponent =
   sendIt (Just ws) (it :: Player) = do
       WS.sendString ws $ stringify $ encodeJson {it}
   sendIt _ _ = pure unit
+
+-- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
+pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
+pulseTimer = ES.EventSource.affEventSource \emitter -> do
+  fiber <- Aff.forkAff $ forever do
+    Aff.delay $ Aff.Milliseconds 500.0
+    ES.EventSource.emit emitter Pulse
+
+  pure $ ES.EventSource.Finalizer do
+    Aff.killFiber (error "Event source finalized") fiber
 
 lookupMaybe :: forall k v . (Ord k) => Maybe k -> Map k v -> Maybe (Tuple k v)
 lookupMaybe (Just a) map = 
