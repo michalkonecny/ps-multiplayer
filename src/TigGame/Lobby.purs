@@ -59,7 +59,8 @@ data Action =
   | SelectPlayer Player Shape
 
 data Query a =
-  OtherPlayer Player a
+    NewPlayer Player a
+  | DearPlayers (Set Player) a
 
 data Output =
     Connected WS.WebSocket
@@ -109,8 +110,11 @@ component =
         HH.input [HP.value shape, HP.attr (H.AttrName "size") "1", HE.onValueInput (Just <<< SetShape) ]]
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
-  handleQuery (OtherPlayer player a) = do
+  handleQuery (NewPlayer player a) = do
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = Set.insert player st.players }
+    pure Nothing
+  handleQuery (DearPlayers deadPlayers a) = do
+    H.modify_ $ updateSelectingPlayer $ \st -> st { players = st.players `Set.difference` deadPlayers }
     pure Nothing
 
   handleAction = case _ of

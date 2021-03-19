@@ -5,7 +5,7 @@ import Prelude
 import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
-import Data.DateTime.Instant (Instant)
+import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
 import Data.List.Lazy (List)
 import Data.Map (Map)
@@ -15,7 +15,7 @@ import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class.Console (log)
@@ -47,6 +47,12 @@ mainTigGame = do
     body <- HA.awaitBody
     runUI rootComponent unit body
 
+pulsePeriodMs :: Number
+pulsePeriodMs = 500.0
+
+pulseTimeoutMs :: Number
+pulseTimeoutMs = 2000.0
+
 maxX :: Int
 maxX = 20
 maxY :: Int
@@ -70,7 +76,7 @@ type State = {
   m_ws :: Maybe WS.WebSocket
 , m_myPlayer :: Maybe Player
 , it :: Player
-, players :: Map Player PosShapeTime
+, playersData :: Map Player PosShapeTime
 }
 
 initialState :: State
@@ -78,14 +84,14 @@ initialState =
   { m_ws: Nothing 
   , m_myPlayer: Nothing
   , it: 1
-  , players: Map.empty
+  , playersData: Map.empty
   }
 
 byPos :: Map Player PosShapeTime -> Map Pos { player :: Player, shape :: String }
-byPos players = 
+byPos playersData = 
   Map.fromFoldable $ 
   map (\(Tuple player {posShape: {pos, shape}}) -> Tuple pos {player, shape}) $ 
-  (Map.toUnfoldable players :: List _)
+  (Map.toUnfoldable playersData :: List _)
 
 data Action =
     HandleLobby Lobby.Output
@@ -136,7 +142,7 @@ rootComponent =
   where
   render {m_myPlayer: Nothing} =
     HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
-  render {m_myPlayer: Just myPlayer, it, players} =
+  render {m_myPlayer: Just myPlayer, it, playersData} =
     HH.div [] [ gameBoard ]
     where
     gameBoard = 
@@ -148,7 +154,7 @@ rootComponent =
         where
         posXY = {x,y}
         Tuple cellText cellClass = 
-          case posXY `Map.lookup` byPos players of
+          case posXY `Map.lookup` byPos playersData of
             Just {player, shape} 
               | player == it && it == myPlayer -> Tuple shape "itMyPlayerCell"
               | player == it -> Tuple shape "itPlayerCell"
@@ -168,17 +174,17 @@ rootComponent =
           pure $ ES.EventSource.Finalizer do
             Aff.killFiber (error "Event source finalized") fiber
 
+      -- start pulse timer:
+      void $ H.subscribe pulseTimer
+
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
       let posShape = { pos: initialPos player, shape }
       time <- liftEffect now
-      H.modify_ $ \ st -> st { m_myPlayer = Just player, players = Map.singleton player {posShape, time} }
+      H.modify_ $ \ st -> st { m_myPlayer = Just player, playersData = Map.singleton player {posShape, time} }
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, posShape}
-
-      -- start pulse timer:
-      void $ H.subscribe pulseTimer
 
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
@@ -198,20 +204,20 @@ rootComponent =
       time <- liftEffect now
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.OtherPlayer player)
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player)
 
-      {m_ws,m_myPlayer,it,players} <- H.get
+      {m_ws,m_myPlayer,it,playersData} <- H.get
       -- if this is a new player, send out my position for them to see:
-      case player `Map.member` players of
+      case player `Map.member` playersData of
         true -> pure unit
         false -> do
           handleMoveBy identity -- ie do not move, but still send out our position
           liftEffect $ sendIt m_ws it -- and send them also who is "it"
       -- update state:
-      H.modify_ $ \ st -> st { players = Map.insert player {posShape, time} st.players }
+      H.modify_ $ \ st -> st { playersData = Map.insert player {posShape, time} st.playersData }
       -- if I am it, check whether I caught them:
       let {pos} = posShape
-      case lookupMaybe m_myPlayer players of
+      case lookupMaybe m_myPlayer playersData of
         Nothing -> pure unit
         Just (Tuple myPlayer {posShape: {pos: myPos}}) -> do
           if myPlayer == it && pos == myPos
@@ -233,24 +239,36 @@ rootComponent =
     Pulse -> do
       -- let others know we are still alive:
       handleMoveBy identity
-      -- delete players who have not sent an update for some time:
-      -- TODO
+      -- find players who have not sent an update for some time:
+      (Milliseconds timeNow) <- unInstant <$> liftEffect now
+      let timeCutOff = timeNow - pulseTimeoutMs
+      {playersData} <- H.get
+      let deadPlayers = Map.filter (olderThan timeCutOff) playersData
+      -- tell Lobby to remove these players:
+      if Map.isEmpty deadPlayers then pure unit
+        else void $ H.query _lobby 0 $ H.tell (Lobby.DearPlayers $ Map.keys deadPlayers)
+      -- delete the old players from state:
+      H.modify_ \st -> st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
 
+  olderThan timeCutOff {time} =
+    let (Milliseconds timeMs) = unInstant time in
+    timeMs < timeCutOff
   handleMoveBy fn = do
-    {m_ws,m_myPlayer,it,players} <- H.get
-    case lookupMaybe m_myPlayer players of
+    {m_ws,m_myPlayer,it,playersData} <- H.get
+    case lookupMaybe m_myPlayer playersData of
       Nothing -> pure unit
-      Just (Tuple myPlayer {posShape, time}) -> do
+      Just (Tuple myPlayer {posShape}) -> do
         -- make the move locally:
         let newPosShape = fn posShape
-        H.modify_ $ \st -> st { players = Map.insert myPlayer {posShape: newPosShape, time} st.players }
+        time <- liftEffect now
+        H.modify_ $ \st -> st { playersData = Map.insert myPlayer {posShape: newPosShape, time} st.playersData }
         -- send new position to peers:
         liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
         -- if I am it, check whether I caught someone:
         if myPlayer == it
           then do
             let {pos} = newPosShape
-            case Map.lookup pos (byPos players) of
+            case Map.lookup pos (byPos playersData) of
               Just {player} | player /= myPlayer -> do
                 -- gotcha! update it locally:
                 H.modify_ $ \st -> st { it = player }
@@ -271,7 +289,7 @@ rootComponent =
 pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
 pulseTimer = ES.EventSource.affEventSource \emitter -> do
   fiber <- Aff.forkAff $ forever do
-    Aff.delay $ Aff.Milliseconds 500.0
+    Aff.delay $ Milliseconds pulsePeriodMs
     ES.EventSource.emit emitter Pulse
 
   pure $ ES.EventSource.Finalizer do
