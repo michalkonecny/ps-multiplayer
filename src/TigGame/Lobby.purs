@@ -85,16 +85,19 @@ component =
     enterWSURL = do
       HH.div_ [
         HH.div_ [HH.span_ 
-          [HH.text "Enter web-socket URL: ws://", 
+          [HH.text "Enter broadcast server web-socket URL: ws://", 
           HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
         , HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]]
   render (SelectingPlayer {shape, players}) =
     HH.div_ [ 
-      HH.div_ [choosePlayer], 
-      HH.div_ [chooseShape]
+      HH.div_ [chooseShape],
+      HH.div_ [choosePlayer] 
     ]
     where
-    choosePlayer = HH.table_ $ [HH.tr_ $ map playerButton playersForSelection]
+    choosePlayer = 
+      HH.div_ [
+        HH.text "Please, select a player number:",
+        HH.table_ $ [HH.tr_ $ map playerButton playersForSelection]]
     playerButton player = 
       HH.td_ [
         HH.button 
