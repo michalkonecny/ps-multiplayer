@@ -22,7 +22,9 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
   4. Each player opens the provided HTML file tigGame.html in a browser and play.
 
-## Design
+## How it works inside
+
+Some aspects of the inner working of the game is described here using [UML sequence diagrams](https://www.uml-diagrams.org/sequence-diagrams.html).
 
 ### A peer connecting and then joining and leaving a game
 
