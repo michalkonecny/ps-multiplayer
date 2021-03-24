@@ -30,4 +30,8 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
 ### Player 1 catching player 2 and getting caught again
 
-<img alt="sequence diagram: catching one another" width="100%" src="docs/catching-sequence.png">
+<img alt="sequence diagram: catching one another" width="80%" src="docs/catching-sequence.png">
+
+### Lobby and root component interactions
+
+<img alt="sequence diagram: lobby component interactions" width="100%" src="docs/lobby.png">
