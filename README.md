@@ -21,3 +21,7 @@ Players' browser instances communicate using broadcast messages via a web-socket
     > spago bundle-app
 
   4. Each player opens the provided HTML file tigGame.html in a browser and play.
+
+## Design
+
+![A peer joining and leaving the game](docs/join-leave-ws-broadcast-sequence.jpg)
