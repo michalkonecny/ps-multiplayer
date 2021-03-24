@@ -13,8 +13,8 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
   2. Install PureScript tools (if needed):
 
-    > npm install purescript@0.13.8
-    > npm install spago
+    > npm install -g purescript@0.13.8
+    > npm install -g spago
 
   3. Build index.js:
 
