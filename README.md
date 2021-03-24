@@ -28,10 +28,12 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
 <img alt="sequence diagram: connecting, joining, leaving a game" width="100%" src="docs/join-leave-ws-broadcast-sequence.png">
 
-### Player 1 catching player 2 and getting caught again
-
-<img alt="sequence diagram: catching one another" width="80%" src="docs/catching-sequence.png">
-
-### Lobby and root component interactions
+### Lobby and root Halogen component interactions
 
 <img alt="sequence diagram: lobby component interactions" width="100%" src="docs/lobby.png">
+
+### Player 1 catching player 2 and getting caught again
+
+All messages among peers shown here as direct messages are in fact broadcast via a web-socket broadcasting server.
+
+<img alt="sequence diagram: catching one another" width="80%" src="docs/catching-sequence.png">
