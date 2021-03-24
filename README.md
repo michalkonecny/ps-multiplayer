@@ -1,6 +1,6 @@
-# PureScript web-based multiplayer game
+# PureScript web-based P2P multiplayer game
 
-This project is intended to be a template for creating simple PureScript web-based real-time multiplayer games.  The game is deliberately very simple: In a game of Tag, each player controls a character on a grid. "It" chases the others to "tag" them.
+This project is intended to be a template for creating simple PureScript web-based real-time multiplayer games.  The game is deliberately very simple: In a game of Tig, each player controls a character on a grid. "It" chases the others to "tig" them.
 
 Players' browser instances communicate using broadcast messages via a web-socket broadcast server.  (A simple broadcast server is provided.)
 
