@@ -24,4 +24,10 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
 ## Design
 
-<img alt="A peer joining and leaving the game" width="100%" src="docs/join-leave-ws-broadcast-sequence.png">
+### A peer connecting and then joining and leaving a game
+
+<img alt="sequence diagram: connecting, joining, leaving a game" width="100%" src="docs/join-leave-ws-broadcast-sequence.png">
+
+### Player 1 catching player 2 and getting caught again
+
+<img alt="sequence diagram: catching one another" width="100%" src="docs/catching-sequence.png">
