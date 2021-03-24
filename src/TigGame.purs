@@ -246,7 +246,7 @@ rootComponent =
       let deadPlayers = Map.filter (olderThan timeCutOff) playersData
       -- tell Lobby to remove these players:
       if Map.isEmpty deadPlayers then pure unit
-        else void $ H.query _lobby 0 $ H.tell (Lobby.DearPlayers $ Map.keys deadPlayers)
+        else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
       -- delete the old players from state:
       H.modify_ \st -> st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
 

@@ -60,7 +60,7 @@ data Action =
 
 data Query a =
     NewPlayer Player a
-  | DearPlayers (Set Player) a
+  | ClearPlayers (Set Player) a
 
 data Output =
     Connected WS.WebSocket
@@ -116,7 +116,7 @@ component =
   handleQuery (NewPlayer player a) = do
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = Set.insert player st.players }
     pure Nothing
-  handleQuery (DearPlayers deadPlayers a) = do
+  handleQuery (ClearPlayers deadPlayers a) = do
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = st.players `Set.difference` deadPlayers }
     pure Nothing
 
