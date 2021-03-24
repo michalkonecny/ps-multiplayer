@@ -24,4 +24,4 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
 ## Design
 
-<img alt="A peer joining and leaving the game" width="100%" src="docs/join-leave-ws-broadcast-sequence.jpg">
+<img alt="A peer joining and leaving the game" width="100%" src="docs/join-leave-ws-broadcast-sequence.png">
