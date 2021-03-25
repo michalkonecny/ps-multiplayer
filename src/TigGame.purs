@@ -1,3 +1,15 @@
+{-|
+    Module      :  TigGame
+    Description :  A simple multiplayer game of tig
+    Copyright   :  (c) Michal Konecny 2021
+    License     :  BSD3
+
+    Maintainer  :  mikkonecny@gmail.com
+    Stability   :  experimental
+    Portability :  portable
+
+   A simple multiplayer game of tig
+-}
 module TigGame(mainTigGame) where
 
 import Prelude

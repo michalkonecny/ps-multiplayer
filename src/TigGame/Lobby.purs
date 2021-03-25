@@ -1,3 +1,15 @@
+{-|
+    Module      :  TigGame.Lobby
+    Description :  A lobby component for a simple multiplayer game
+    Copyright   :  (c) Michal Konecny 2021
+    License     :  BSD3
+
+    Maintainer  :  mikkonecny@gmail.com
+    Stability   :  experimental
+    Portability :  portable
+
+   A lobby component for a simple multiplayer game
+-}
 module TigGame.Lobby where
 
 import Prelude

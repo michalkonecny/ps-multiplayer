@@ -1,4 +1,17 @@
--- adapted from https://github.com/purescript-halogen/purescript-halogen/blob/master/examples/driver-websockets/src/Main.purs
+{-|
+    Module      :  WSListener
+    Description :  Utility for listening to a web-socket
+    Copyright   :  (c) Michal Konecny 2021, authors of purescript-halogen (see link below)
+    License     :  BSD3
+
+    Maintainer  :  mikkonecny@gmail.com
+    Stability   :  experimental
+    Portability :  portable
+
+   A utility to attach an Aff listener to a web-socket.
+
+   Adapted from https://github.com/purescript-halogen/purescript-halogen/blob/master/examples/driver-websockets/src/Main.purs
+-}
 module WSListener
 (setupWSListener) 
 where

@@ -1,3 +1,15 @@
+{-|
+    Module      :  EitherHelpers
+    Description :  Utilities for Either values
+    Copyright   :  (c) Michal Konecny 2021
+    License     :  BSD3
+
+    Maintainer  :  mikkonecny@gmail.com
+    Stability   :  experimental
+    Portability :  portable
+
+   Utilities for Either values
+-}
 module EitherHelpers where
 
 import Prelude
