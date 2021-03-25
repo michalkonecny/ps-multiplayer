@@ -10,7 +10,9 @@
 
    A utility to attach an Aff listener to a web-socket.
 
-   Adapted from https://github.com/purescript-halogen/purescript-halogen/blob/master/examples/driver-websockets/src/Main.purs
+   Adapted an extract from https://github.com/purescript-halogen/purescript-halogen/blob/master/examples/driver-websockets/src/Main.purs .  
+   The extract has been generalised so that it can be applied to any Aff handler, removing all dependencies on Halogen.
+
 -}
 module WSListener
 (setupWSListener) 
