@@ -134,8 +134,6 @@ messageToAction msg = do
   describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
   describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
-data LobbyP
-
 _lobby :: SProxy "lobby"
 _lobby = SProxy
 
