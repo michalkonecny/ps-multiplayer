@@ -42,8 +42,8 @@ import Halogen.HTML.Properties as HP
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
-import TigGame.Lobby (Output(..), Player, Shape)
-import TigGame.Lobby as Lobby
+import Lobby (Output(..), Player, Shape)
+import Lobby as Lobby
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
