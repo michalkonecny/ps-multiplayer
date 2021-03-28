@@ -6,10 +6,12 @@ You can edit this file as you like.
 , dependencies =
   [ "aff-coroutines"
   , "argonaut"
+  , "canvas"
   , "console"
   , "datetime"
   , "effect"
   , "halogen"
+  , "halogen-hooks"
   , "now"
   , "psci-support"
   , "web-socket"

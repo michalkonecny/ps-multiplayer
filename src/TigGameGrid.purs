@@ -1,5 +1,5 @@
 {-|
-    Module      :  TigGame
+    Module      :  TigGameGrid
     Description :  A simple multiplayer game of tig
     Copyright   :  (c) Michal Konecny 2021
     License     :  BSD3
@@ -10,7 +10,7 @@
 
    A simple multiplayer game of tig
 -}
-module TigGame(mainTigGame) where
+module TigGameGrid(mainTigGameGrid) where
 
 import Prelude
 
@@ -53,8 +53,8 @@ import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
-mainTigGame :: Effect Unit
-mainTigGame = do
+mainTigGameGrid :: Effect Unit
+mainTigGameGrid = do
   HA.runHalogenAff do
     body <- HA.awaitBody
     runUI rootComponent unit body
