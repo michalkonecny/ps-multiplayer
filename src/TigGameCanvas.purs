@@ -16,16 +16,19 @@ import Prelude
 
 import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
-import Data.Array ((..))
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
+import Data.Int (toNumber)
 import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
 import Data.String as String
 import Data.Symbol (SProxy(..))
+import Data.Traversable (sequence, sequence_, traverse_)
 import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Aff as Aff
@@ -34,11 +37,14 @@ import Effect.Class.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
 import EitherHelpers (mapLeft, (<|||>))
-import Halogen (ClassName(..), liftEffect)
+import Graphics.Canvas as Canvas
+import Halogen (liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
+import Halogen.Hooks (Hook)
+import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
@@ -86,15 +92,29 @@ moveY dy {pos: {x,y}, shape} = { pos: { x, y: ((y + (dy - 1)) `mod` maxY) + 1}, 
 
 type State = {
   m_ws :: Maybe WS.WebSocket
-, m_myPlayer :: Maybe Player
-, it :: Player
-, playersData :: Map Player PosShapeTime
+, m_GameState :: Maybe GameState
 }
+
+updateGameState :: (GameState -> GameState) -> State -> State
+updateGameState fn state = case state of
+  {m_GameState: Just gameState} -> state {m_GameState = Just $ fn gameState}
+  _ -> state
 
 initialState :: State
 initialState =  
   { m_ws: Nothing 
-  , m_myPlayer: Nothing
+  , m_GameState: Nothing
+  }
+
+type GameState = {
+  myPlayer :: Player
+, it :: Player
+, playersData :: Map Player PosShapeTime
+}
+
+initialGameState :: GameState
+initialGameState =  
+  { myPlayer: 0
   , it: 1
   , playersData: Map.empty
   }
@@ -134,12 +154,68 @@ messageToAction msg = do
   describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
   describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
-data LobbyP
-
 _lobby :: SProxy "lobby"
 _lobby = SProxy
 
-type Slots = ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
+_canvas :: SProxy "canvas"
+_canvas = SProxy
+
+type Slots = 
+  ( lobby :: H.Slot Lobby.Query Lobby.Output Int
+  , canvas :: H.Slot CanvasQuery Action Int )
+
+data CanvasQuery a = CanvasQuery GameState a
+
+passStateToCanvas :: forall action output m.
+  H.HalogenM State action Slots output m Unit
+passStateToCanvas = do
+  {m_GameState} <- H.get
+  case m_GameState of
+    Nothing -> pure unit
+    Just st ->
+      void $ H.query _canvas 1 $ H.tell (CanvasQuery st)
+
+canvasComponent ::
+  forall input output m.
+  MonadAff m =>
+  Player -> H.Component HH.HTML CanvasQuery input output m
+canvasComponent myPlayer =
+  Hooks.component \{ queryToken } _ -> Hooks.do
+    state /\ modifyState <- Hooks.useState initialGameState
+    Hooks.useQuery queryToken case _ of
+      CanvasQuery newState _ -> do
+        Hooks.modify_ modifyState (const newState)
+        pure Nothing
+    drawOnCanvas state
+    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (40*maxX), HP.height (40*maxY) ]
+
+newtype DrawOnCanvas hooks
+  = DrawOnCanvas (Hooks.UseEffect hooks)
+
+derive instance newtypeDrawOnCanvas :: Newtype (DrawOnCanvas hooks) _
+
+drawOnCanvas :: forall m. MonadAff m => GameState -> Hook m DrawOnCanvas Unit
+drawOnCanvas state =
+  Hooks.wrap Hooks.do
+    Hooks.captures {state} Hooks.useTickEffect do
+      mcanvas <- liftEffect $ Canvas.getCanvasElementById "canvas"
+      mcontext <- liftEffect $ sequence $ Canvas.getContext2D <$> mcanvas
+      traverse_ drawPlayers mcontext
+      pure Nothing
+    Hooks.pure unit
+  where
+  drawPlayers context = liftEffect $ do
+    Canvas.setFillStyle context "lightgreen"
+    Canvas.fillRect context { x: 0.0, y: 0.0, width: (toNumber maxX) * 40.0, height: (toNumber maxY) * 40.0 }
+    sequence_ $ map drawPlayer $ (Map.toUnfoldable state.playersData :: List _)
+    where
+    drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
+      Canvas.setFillStyle context "red"
+      Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
+      where
+      x = 40.0 * (toNumber px - 1.0)
+      y = 40.0 * (toNumber py - 1.0)
+      
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
@@ -152,28 +228,10 @@ rootComponent =
       { handleAction = handleAction }
     }
   where
-  render {m_myPlayer: Nothing} =
+  render {m_GameState: Nothing} =
     HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
-  render {m_myPlayer: Just myPlayer, it, playersData} =
-    HH.div [] [ gameBoard ]
-    where
-    gameBoard = 
-      HH.table [HP.class_ (ClassName "gameBoard")] rows
-      where
-      rows = map makeRow (1..maxY)
-      makeRow y = HH.tr_ $ map (makeCell y) (1..maxX)
-      makeCell y x = HH.td [HP.class_ (ClassName cellClass)] [HH.text cellText]
-        where
-        posXY = {x,y}
-        Tuple cellText cellClass = 
-          case posXY `Map.lookup` byPos playersData of
-            Just {player, shape} 
-              | player == it && it == myPlayer -> Tuple shape "itMyPlayerCell"
-              | player == it -> Tuple shape "itPlayerCell"
-              | player == myPlayer -> Tuple shape "myPlayerCell"
-              | otherwise -> Tuple shape "playerCell"
-            _ -> Tuple "" "blankCell"
-
+  render {m_GameState: Just { myPlayer, it, playersData}} =
+    HH.slot _canvas 1 (canvasComponent myPlayer) unit Just
 
   handleAction = case _ of
     HandleLobby (Connected ws) -> do
@@ -193,7 +251,10 @@ rootComponent =
       -- set my player to the state:
       let posShape = { pos: initialPos player, shape }
       time <- liftEffect now
-      H.modify_ $ \ st -> st { m_myPlayer = Just player, playersData = Map.singleton player {posShape, time} }
+      H.modify_ $ _ { m_GameState = Just $
+          initialGameState 
+              { myPlayer = player
+              , playersData = Map.singleton player {posShape, time} } }
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, posShape}
@@ -218,29 +279,38 @@ rootComponent =
       -- let the lobby know of this player:
       void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player)
 
-      {m_ws,m_myPlayer,it,playersData} <- H.get
-      -- if this is a new player, send out my position for them to see:
-      case player `Map.member` playersData of
-        true -> pure unit
-        false -> do
-          handleMoveBy identity -- ie do not move, but still send out our position
-          liftEffect $ sendIt m_ws it -- and send them also who is "it"
-      -- update state:
-      H.modify_ $ \ st -> st { playersData = Map.insert player {posShape, time} st.playersData }
-      -- if I am it, check whether I caught them:
-      let {pos} = posShape
-      case lookupMaybe m_myPlayer playersData of
+      {m_ws,m_GameState} <- H.get
+
+      case m_GameState of
         Nothing -> pure unit
-        Just (Tuple myPlayer {posShape: {pos: myPos}}) -> do
-          if myPlayer == it && pos == myPos
-            then do
-              -- gotcha! update it locally:
-              H.modify_ $ \st -> st { it = player }
-              -- and announce new "it":
-              liftEffect $ sendIt m_ws player
-            else pure unit
+        Just {myPlayer,it,playersData} -> do
+          -- if this is a new player, send out my position for them to see:
+          case player `Map.member` playersData of
+            true -> pure unit
+            false -> do
+              handleMoveBy identity -- ie do not move, but still send out our position
+              liftEffect $ sendIt m_ws it -- and send them also who is "it"
+          -- update state:
+          H.modify_ $ updateGameState $ \ st -> 
+            st { playersData = Map.insert player {posShape, time} st.playersData }
+          passStateToCanvas
+
+          -- if I am it, check whether I caught them:
+          let {pos} = posShape
+          case Map.lookup myPlayer playersData of
+            Nothing -> pure unit
+            Just {posShape: {pos: myPos}} -> do
+              if myPlayer == it && pos == myPos
+                then do
+                  -- gotcha! update it locally:
+                  H.modify_ $ updateGameState $ _ { it = player }
+                  passStateToCanvas
+                  -- and announce new "it":
+                  liftEffect $ sendIt m_ws player
+                else pure unit
     SetIt it -> do
-      H.modify_ $ \st -> st { it = it }
+      H.modify_ $ updateGameState $ _ { it = it }
+      passStateToCanvas
     HandleKey _sid ev -> do
       case KE.key ev of
         "ArrowLeft" -> handleMoveBy (moveX (-1))
@@ -251,43 +321,56 @@ rootComponent =
     Pulse -> do
       -- let others know we are still alive:
       handleMoveBy identity
+      
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
       let timeCutOff = timeNow - pulseTimeoutMs
-      {playersData} <- H.get
-      let deadPlayers = Map.filter (olderThan timeCutOff) playersData
-      -- tell Lobby to remove these players:
-      if Map.isEmpty deadPlayers then pure unit
-        else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
-      -- delete the old players from state:
-      H.modify_ \st -> st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
+      {m_GameState} <- H.get
+      case m_GameState of
+        Nothing -> pure unit
+        Just {playersData} -> do
+          let deadPlayers = Map.filter (olderThan timeCutOff) playersData
+
+          -- tell Lobby to remove these players:
+          if Map.isEmpty deadPlayers then pure unit
+            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
+
+          -- delete the old players from state:
+          H.modify_ $ updateGameState $ \st -> 
+            st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
 
   olderThan timeCutOff {time} =
     let (Milliseconds timeMs) = unInstant time in
     timeMs < timeCutOff
   handleMoveBy fn = do
-    {m_ws,m_myPlayer,it,playersData} <- H.get
-    case lookupMaybe m_myPlayer playersData of
+    {m_ws,m_GameState} <- H.get
+    case m_GameState of
       Nothing -> pure unit
-      Just (Tuple myPlayer {posShape}) -> do
-        -- make the move locally:
-        let newPosShape = fn posShape
-        time <- liftEffect now
-        H.modify_ $ \st -> st { playersData = Map.insert myPlayer {posShape: newPosShape, time} st.playersData }
-        -- send new position to peers:
-        liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
-        -- if I am it, check whether I caught someone:
-        if myPlayer == it
-          then do
-            let {pos} = newPosShape
-            case Map.lookup pos (byPos playersData) of
-              Just {player} | player /= myPlayer -> do
-                -- gotcha! update it locally:
-                H.modify_ $ \st -> st { it = player }
-                -- and announce new "it":
-                liftEffect $ sendIt m_ws player
-              _ -> pure unit
-          else pure unit
+      Just {myPlayer,it,playersData} -> do
+        case Map.lookup myPlayer playersData of
+          Nothing -> pure unit
+          Just {posShape} -> do
+            -- make the move locally:
+            let newPosShape = fn posShape
+            time <- liftEffect now
+            H.modify_ $ updateGameState $ \st -> 
+              st { playersData = Map.insert myPlayer {posShape: newPosShape, time} st.playersData }
+            passStateToCanvas
+            -- send new position to peers:
+            liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
+            -- if I am it, check whether I caught someone:
+            if myPlayer == it
+              then do
+                let {pos} = newPosShape
+                case Map.lookup pos (byPos playersData) of
+                  Just {player} | player /= myPlayer -> do
+                    -- gotcha! update it locally:
+                    H.modify_ $ updateGameState $ _ { it = player }
+                    passStateToCanvas
+                    -- and announce new "it":
+                    liftEffect $ sendIt m_ws player
+                  _ -> pure unit
+              else pure unit
 
   sendMyPos (Just ws) playerPosShape = do
       WS.sendString ws $ stringify $ encodeJson playerPosShape
