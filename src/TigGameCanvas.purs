@@ -26,7 +26,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.String as String
 import Data.Symbol (SProxy(..))
-import Data.Traversable (sequence, sequence_, traverse_)
+import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
@@ -214,10 +214,10 @@ drawOnCanvas state =
     traverse_ drawPlayer (Map.toUnfoldable state.playersData :: List _)
     where
     drawBoard = do
-      Canvas.setFillStyle context "papayawhip"
+      Canvas.setFillStyle context "lightgoldenrodyellow"
       Canvas.fillRect context { x: 0.0, y: 0.0, width: (toNumber maxX) * 40.0, height: (toNumber maxY) * 40.0 }
     drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
-        Canvas.setFillStyle context "salmon"
+        Canvas.setFillStyle context playerStyle
         -- Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
         Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x: x+20.0, y: y+20.0 }
         Canvas.setFillStyle context "black"
@@ -230,6 +230,12 @@ drawOnCanvas state =
         where
         x = 40.0 * (toNumber px - 1.0)
         y = 40.0 * (toNumber py - 1.0)
+        playerStyle 
+          | is_it = "lightcoral"
+          | is_me = "bisque"
+          | otherwise = "white"
+        is_it = player == state.it
+        is_me = player == state.myPlayer
       
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
