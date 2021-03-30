@@ -23,8 +23,6 @@ import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing)
-import Data.Monoid (power)
-import Data.Newtype (class Newtype)
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Traversable (sequence, traverse_)
@@ -45,7 +43,6 @@ import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
-import Halogen.Hooks (Hook)
 import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
@@ -223,49 +220,48 @@ canvasComponent myPlayer =
         Hooks.modify_ modifyState (const newState)
         pure Nothing
     drawOnCanvas state
-    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (Int.ceil maxX), HP.height (Int.ceil maxY) ]
-
-newtype DrawOnCanvas hooks = DrawOnCanvas (Hooks.UseEffect hooks)
-
-derive instance newtypeDrawOnCanvas :: Newtype (DrawOnCanvas hooks) _
-
-drawOnCanvas :: forall m. MonadAff m => GameState -> Hook m DrawOnCanvas Unit
-drawOnCanvas state =
-  Hooks.wrap Hooks.do
-    Hooks.captures {state} Hooks.useTickEffect do
-      mcanvas <- liftEffect $ Canvas.getCanvasElementById "canvas"
-      mcontext <- liftEffect $ sequence $ Canvas.getContext2D <$> mcanvas
-      traverse_ drawPlayers mcontext
-      pure Nothing
-    Hooks.pure unit
-  where
-  drawPlayers context = liftEffect $ do
-    drawBoard
-    traverse_ drawPlayer (Map.toUnfoldable state.playersData :: List _)
+    Hooks.pure $ 
+      HH.canvas 
+        [ HP.id_ "canvas"
+        , HP.width (Int.ceil maxX)
+        , HP.height (Int.ceil maxY) 
+        ]
     where
-    drawBoard = do
-      Canvas.setFillStyle context "lightgoldenrodyellow"
-      Canvas.fillRect context { x: 0.0, y: 0.0, width: maxX, height: maxY }
-    drawPlayer (Tuple player {movingShape: {center: {pos: {x,y}}, shape, radius}}) =  do
-        Canvas.setFillStyle context playerStyle
-        Canvas.fillPath context $ Canvas.arc context 
-          { start: 0.0, end: 2.0*pi, radius, x, y }
-        Canvas.setFillStyle context "black"
-        Canvas.setFont context $ show textSize <> "px sans"
-        Canvas.setTextAlign context AlignCenter
-        -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
-        Canvas.fillText context shape x (y+0.6*radius)
+    drawOnCanvas state =
+      Hooks.do
+        Hooks.captures {state} Hooks.useTickEffect do
+          mcanvas <- liftEffect $ Canvas.getCanvasElementById "canvas"
+          mcontext <- liftEffect $ sequence $ Canvas.getContext2D <$> mcanvas
+          traverse_ drawPlayers mcontext
+          pure Nothing
+        Hooks.pure unit
+      where
+      drawPlayers context = liftEffect $ do
+        drawBoard
+        traverse_ drawPlayer (Map.toUnfoldable state.playersData :: List _)
         where
-        playerStyle 
-          | is_it = "lightcoral"
-          | is_me = "bisque"
-          | otherwise = "white"
-        is_it = player == state.it
-        is_me = player == state.myPlayer
+        drawBoard = do
+          Canvas.setFillStyle context "lightgoldenrodyellow"
+          Canvas.fillRect context { x: 0.0, y: 0.0, width: maxX, height: maxY }
+        drawPlayer (Tuple player {movingShape: {center: {pos: {x,y}}, shape, radius}}) =  do
+            Canvas.setFillStyle context playerStyle
+            Canvas.fillPath context $ Canvas.arc context 
+              { start: 0.0, end: 2.0*pi, radius, x, y }
+            Canvas.setFillStyle context "black"
+            Canvas.setFont context $ show textSize <> "px sans"
+            Canvas.setTextAlign context AlignCenter
+            -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
+            Canvas.fillText context shape x (y+0.6*radius)
+            where
+            playerStyle 
+              | is_it = "lightcoral"
+              | is_me = "bisque"
+              | otherwise = "white"
+            is_it = player == state.it
+            is_me = player == state.myPlayer
 
-        textSize = Int.round $ 1.6*radius
+            textSize = Int.round $ 1.6*radius
       
-
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
   H.mkComponent
@@ -368,6 +364,8 @@ rootComponent =
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
       passStateToCanvas
+
+    -- handle my movement:
     HandleKeyDown _sid ev -> do
       case KE.key ev of
         "ArrowLeft"  -> handleMoveBy (MPt.setAccelX (- speedIncrement))
@@ -410,7 +408,7 @@ rootComponent =
     let (Milliseconds timeMs) = unInstant time in
     timeMs < timeCutOff
 
-  handleMoveBy fn = do
+  handleMoveBy moveCenter = do
     {m_ws,m_GameState} <- H.get
     case m_GameState of
       Nothing -> pure unit
@@ -419,7 +417,7 @@ rootComponent =
           Nothing -> pure unit
           Just {movingShape} -> do
             -- make the move locally:
-            let newMovingShape = movingShape { center = fn movingShape.center }
+            let newMovingShape = movingShape { center = moveCenter movingShape.center }
             time <- liftEffect now
             H.modify_ $ updateGameState $ \st -> 
               st { playersData = Map.insert myPlayer {movingShape: newMovingShape, time} st.playersData }
@@ -461,10 +459,3 @@ pulseTimer = ES.EventSource.affEventSource \emitter -> do
 
   pure $ ES.EventSource.Finalizer do
     Aff.killFiber (error "Event source finalized") fiber
-
-lookupMaybe :: forall k v . (Ord k) => Maybe k -> Map k v -> Maybe (Tuple k v)
-lookupMaybe (Just a) map = 
-  case Map.lookup a map of
-    Just b -> Just (Tuple a b)
-    _ -> Nothing
-lookupMaybe _ _ = Nothing
