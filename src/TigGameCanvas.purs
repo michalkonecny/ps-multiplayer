@@ -50,6 +50,7 @@ import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
 import Lobby (Output(..), Player, Shape)
 import Lobby as Lobby
+import Math (pi)
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
@@ -175,6 +176,10 @@ passStateToCanvas = do
     Just st ->
       void $ H.query _canvas 1 $ H.tell (CanvasQuery st)
 
+{-
+  Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
+  "PureScript Halogen demo for drawing on a canvas using Hooks"
+-}
 canvasComponent ::
   forall input output m.
   MonadAff m =>
@@ -189,8 +194,7 @@ canvasComponent myPlayer =
     drawOnCanvas state
     Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (40*maxX), HP.height (40*maxY) ]
 
-newtype DrawOnCanvas hooks
-  = DrawOnCanvas (Hooks.UseEffect hooks)
+newtype DrawOnCanvas hooks = DrawOnCanvas (Hooks.UseEffect hooks)
 
 derive instance newtypeDrawOnCanvas :: Newtype (DrawOnCanvas hooks) _
 
@@ -205,16 +209,25 @@ drawOnCanvas state =
     Hooks.pure unit
   where
   drawPlayers context = liftEffect $ do
-    Canvas.setFillStyle context "lightgreen"
-    Canvas.fillRect context { x: 0.0, y: 0.0, width: (toNumber maxX) * 40.0, height: (toNumber maxY) * 40.0 }
-    sequence_ $ map drawPlayer $ (Map.toUnfoldable state.playersData :: List _)
+    drawBoard
+    traverse_ drawPlayer (Map.toUnfoldable state.playersData :: List _)
     where
+    drawBoard = do
+      Canvas.setFillStyle context "papayawhip"
+      Canvas.fillRect context { x: 0.0, y: 0.0, width: (toNumber maxX) * 40.0, height: (toNumber maxY) * 40.0 }
     drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
-      Canvas.setFillStyle context "red"
-      Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
-      where
-      x = 40.0 * (toNumber px - 1.0)
-      y = 40.0 * (toNumber py - 1.0)
+        Canvas.setFillStyle context "salmon"
+        -- Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
+        Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x: x+20.0, y: y+20.0 }
+        Canvas.setFillStyle context "black"
+        Canvas.setFont context "40px sans"
+        -- Canvas.setTextBaseline context Canvas.BaselineTop
+        Canvas.fillText context shape x (y+35.0)
+        -- Canvas.setStrokeStyle context "black"
+        -- Canvas.setLineWidth context 2.0
+        where
+        x = 40.0 * (toNumber px - 1.0)
+        y = 40.0 * (toNumber py - 1.0)
       
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
