@@ -73,9 +73,11 @@ pulsePeriodMs = 100.0
 pulseTimeoutMs :: Number
 pulseTimeoutMs = 1000.0
 
+-- internal units are this much larger than display units
 scaling :: Number
 scaling = 10.0
 
+-- display maximum x is maxX / scaling
 maxX :: Int
 maxX = 8000
 maxY :: Int
@@ -88,7 +90,7 @@ speedIncrement :: Int
 speedIncrement = 10
 
 type Pos = { x :: Int, y :: Int }
-type PosShape = { pos :: Pos, velo :: Pos, shape :: Shape }
+type PosShape = { pos :: Pos, velo :: Pos, accell :: Pos, shape :: Shape }
 type PosShapeTime = { posShape :: PosShape, time :: Instant }
 
 initialPos :: Player -> Pos
@@ -96,27 +98,32 @@ initialPos player =
   { x: 1 + (player*1007) `mod` maxX, 
     y: 1 + (player*1007) `mod` maxY }
 
-initialVelo :: Pos
-initialVelo = {x:0, y:0}
+setAccelX :: Int -> PosShape -> PosShape
+setAccelX ddx ps@{accell: a} = ps { accell = a { x = ddx } }
 
-accelX :: Int -> PosShape -> PosShape
-accelX ddx ps@{velo: v@{x:dx}} = 
-  ps { velo = v { x = ((dx + ddx) `min` maxSpeed) `max` (- maxSpeed)} }
+setAccelY :: Int -> PosShape -> PosShape
+setAccelY ddy ps@{accell: a} = ps { accell = a { y = ddy } }
 
-accelY :: Int -> PosShape -> PosShape
-accelY ddy ps@{velo: v@{y:dy}} = 
-  ps { velo = v { y = ((dy + ddy) `min` maxSpeed) `max` (- maxSpeed) } }
+resetAccelX :: Int -> PosShape -> PosShape
+resetAccelX ddx ps@{accell: a@{x}} 
+  | x == ddx = ps { accell = a { x = 0 } }
+  | otherwise = ps
+
+resetAccelY :: Int -> PosShape -> PosShape
+resetAccelY ddy ps@{accell: a@{y}} 
+  | y == ddy = ps { accell = a { y = 0 } }
+  | otherwise = ps
 
 move :: PosShape -> PosShape
-move ps@{pos: {x,y}, velo: {x:dx, y:dy}} = 
+move ps@{pos: {x,y}, velo: {x:dx, y:dy}, accell: {x:ddx, y:ddy}} = 
   ps 
   { 
     pos = 
       { x: (x + dx - 1) `mod` maxX + 1, 
         y: ((y + dy - 1) `mod` maxY) + 1} 
   , velo = -- gradually slow down:
-      { x: slowDown dx,
-        y: slowDown dy
+      { x: slowDown (((dx + ddx) `min` maxSpeed) `max` (- maxSpeed)),
+        y: slowDown (((dy + ddy) `min` maxSpeed) `max` (- maxSpeed))
       }
   }
   where
@@ -164,7 +171,8 @@ data Action =
   | ReceiveMessageFromPeer String
   | SetPlayer Player PosShape
   | SetIt Player
-  | HandleKey H.SubscriptionId KeyboardEvent
+  | HandleKeyDown H.SubscriptionId KeyboardEvent
+  | HandleKeyUp H.SubscriptionId KeyboardEvent
   | Pulse
 
 -- message types:
@@ -304,7 +312,7 @@ rootComponent =
 
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
-      let posShape = { pos: initialPos player, velo: initialVelo, shape }
+      let posShape = { pos: initialPos player, velo: {x:0, y:0}, accell: {x:0, y:0}, shape }
       time <- liftEffect now
       H.modify_ $ _ { m_GameState = Just $
           initialGameState 
@@ -320,7 +328,12 @@ rootComponent =
         ES.eventListenerEventSource
           KET.keydown
           (HTMLDocument.toEventTarget document)
-          (map (HandleKey sid) <<< KE.fromEvent)
+          (map (HandleKeyDown sid) <<< KE.fromEvent)
+      H.subscribe' \sid ->
+        ES.eventListenerEventSource
+          KET.keyup
+          (HTMLDocument.toEventTarget document)
+          (map (HandleKeyUp sid) <<< KE.fromEvent)
       
     ReceiveMessageFromPeer msg -> do
       case messageToAction msg of
@@ -366,12 +379,19 @@ rootComponent =
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it }
       passStateToCanvas
-    HandleKey _sid ev -> do
+    HandleKeyDown _sid ev -> do
       case KE.key ev of
-        "ArrowLeft" -> handleMoveBy (accelX (- speedIncrement))
-        "ArrowRight" -> handleMoveBy (accelX speedIncrement)
-        "ArrowUp" -> handleMoveBy (accelY (- speedIncrement))
-        "ArrowDown" -> handleMoveBy (accelY speedIncrement)
+        "ArrowLeft"  -> handleMoveBy (setAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (setAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (setAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (setAccelY speedIncrement)
+        _ -> pure unit
+    HandleKeyUp _sid ev -> do
+      case KE.key ev of
+        "ArrowLeft"  -> handleMoveBy (resetAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (resetAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (resetAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (resetAccelY speedIncrement)
         _ -> pure unit
     Pulse -> do
       -- let others know we are still alive:
