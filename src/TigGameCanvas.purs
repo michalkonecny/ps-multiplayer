@@ -10,7 +10,7 @@
 
    A simple multiplayer game of tig
 -}
-module TigGameCanvas(mainTigGameCanvas) where
+module TigGameCanvas(mainTigGame) where
 
 import Prelude
 
@@ -61,8 +61,8 @@ import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
-mainTigGameCanvas :: Effect Unit
-mainTigGameCanvas = do
+mainTigGame :: Effect Unit
+mainTigGame = do
   HA.runHalogenAff do
     body <- HA.awaitBody
     runUI rootComponent unit body

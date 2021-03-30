@@ -3,9 +3,9 @@ module Main where
 import Prelude
 
 import Effect (Effect)
-import TigGameCanvas (mainTigGameCanvas)
--- import TigGameTable (mainTigGameTable)
+-- import TigGameTable (mainTigGame)
+-- import TigGameCanvas (mainTigGame)
+import TigGameSmooth (mainTigGame)
 
 main :: Effect Unit
--- main = mainTigGameTable
-main = mainTigGameCanvas
+main = mainTigGame

@@ -10,7 +10,7 @@
 
    A simple multiplayer game of tig
 -}
-module TigGameSmooth(mainTigGameSmooth) where
+module TigGameSmooth(mainTigGame) where
 
 import Prelude
 
@@ -61,36 +61,51 @@ import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
-mainTigGameSmooth :: Effect Unit
-mainTigGameSmooth = do
+mainTigGame :: Effect Unit
+mainTigGame = do
   HA.runHalogenAff do
     body <- HA.awaitBody
     runUI rootComponent unit body
 
 pulsePeriodMs :: Number
-pulsePeriodMs = 500.0
+pulsePeriodMs = 100.0
 
 pulseTimeoutMs :: Number
-pulseTimeoutMs = 2000.0
+pulseTimeoutMs = 1000.0
 
 maxX :: Int
-maxX = 20
+maxX = 800
 maxY :: Int
-maxY = 20
+maxY = 800
 
 type Pos = { x :: Int, y :: Int }
-type PosShape = { pos :: Pos, shape :: Shape }
+type PosShape = { pos :: Pos, velo :: Pos, shape :: Shape }
 type PosShapeTime = { posShape :: PosShape, time :: Instant }
 
 initialPos :: Player -> Pos
 initialPos player = 
-  { x: 1 + (player*3) `mod` maxX, y: 1 + (player*3) `mod` maxY }
+  { x: 1 + (player*107) `mod` maxX, 
+    y: 1 + (player*107) `mod` maxY }
 
-moveX :: Int -> PosShape -> PosShape
-moveX dx {pos: {x,y}, shape}  = { pos: { x: ((x + (dx - 1)) `mod` maxX) + 1, y}, shape }
+initialVelo :: Pos
+initialVelo = {x:0, y:0}
 
-moveY :: Int -> PosShape -> PosShape
-moveY dy {pos: {x,y}, shape} = { pos: { x, y: ((y + (dy - 1)) `mod` maxY) + 1}, shape }
+accelX :: Int -> PosShape -> PosShape
+accelX ddx ps@{velo: v@{x:dx}} = 
+  ps { velo = v { x = dx + ddx } }
+
+accelY :: Int -> PosShape -> PosShape
+accelY ddy ps@{velo: v@{y:dy}} = 
+  ps { velo = v { y = dy + ddy } }
+
+move :: PosShape -> PosShape
+move ps@{pos: {x,y}, velo: {x:dx, y:dy}} = 
+  ps 
+  { 
+    pos = 
+      {x: (x + dx - 1) `mod` maxX + 1, 
+      y: (y + dy - 1) `mod` maxY - 1} 
+  }
 
 type State = {
   m_ws :: Maybe WS.WebSocket
@@ -193,7 +208,7 @@ canvasComponent myPlayer =
         Hooks.modify_ modifyState (const newState)
         pure Nothing
     drawOnCanvas state
-    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (40*maxX), HP.height (40*maxY) ]
+    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width maxX, HP.height maxY ]
 
 newtype DrawOnCanvas hooks = DrawOnCanvas (Hooks.UseEffect hooks)
 
@@ -215,7 +230,7 @@ drawOnCanvas state =
     where
     drawBoard = do
       Canvas.setFillStyle context "lightgoldenrodyellow"
-      Canvas.fillRect context { x: 0.0, y: 0.0, width: (toNumber maxX) * 40.0, height: (toNumber maxY) * 40.0 }
+      Canvas.fillRect context { x: 0.0, y: 0.0, width: toNumber maxX, height: toNumber maxY }
     drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
         Canvas.setFillStyle context playerStyle
         -- Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
@@ -228,8 +243,8 @@ drawOnCanvas state =
         -- Canvas.setStrokeStyle context "black"
         -- Canvas.setLineWidth context 2.0
         where
-        x = 40.0 * (toNumber px - 1.0)
-        y = 40.0 * (toNumber py - 1.0)
+        x = toNumber px - 1.0
+        y = toNumber py - 1.0
         playerStyle 
           | is_it = "lightcoral"
           | is_me = "bisque"
@@ -270,7 +285,7 @@ rootComponent =
 
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
-      let posShape = { pos: initialPos player, shape }
+      let posShape = { pos: initialPos player, velo: initialVelo, shape }
       time <- liftEffect now
       H.modify_ $ _ { m_GameState = Just $
           initialGameState 
@@ -334,14 +349,14 @@ rootComponent =
       passStateToCanvas
     HandleKey _sid ev -> do
       case KE.key ev of
-        "ArrowLeft" -> handleMoveBy (moveX (-1))
-        "ArrowRight" -> handleMoveBy (moveX (1))
-        "ArrowUp" -> handleMoveBy (moveY (-1))
-        "ArrowDown" -> handleMoveBy (moveY (1))
+        "ArrowLeft" -> handleMoveBy (accelX (-1))
+        "ArrowRight" -> handleMoveBy (accelX (1))
+        "ArrowUp" -> handleMoveBy (accelY (-1))
+        "ArrowDown" -> handleMoveBy (accelY (1))
         _ -> pure unit
     Pulse -> do
       -- let others know we are still alive:
-      handleMoveBy identity
+      handleMoveBy move
       
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
@@ -363,6 +378,7 @@ rootComponent =
   olderThan timeCutOff {time} =
     let (Milliseconds timeMs) = unInstant time in
     timeMs < timeCutOff
+
   handleMoveBy fn = do
     {m_ws,m_GameState} <- H.get
     case m_GameState of
