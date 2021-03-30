@@ -84,10 +84,13 @@ maxY :: Int
 maxY = 8000
 
 maxSpeed :: Int
-maxSpeed = 100
+maxSpeed = 200
 
 speedIncrement :: Int
-speedIncrement = 10
+speedIncrement = 20
+
+playerRadius :: Int
+playerRadius = 250
 
 type Pos = { x :: Int, y :: Int }
 type PosShape = { pos :: Pos, velo :: Pos, accell :: Pos, shape :: Shape }
@@ -260,24 +263,25 @@ drawOnCanvas state =
       Canvas.fillRect context { x: 0.0, y: 0.0, width: (Int.toNumber maxX)/scaling, height: (Int.toNumber maxY)/scaling }
     drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
         Canvas.setFillStyle context playerStyle
-        -- Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
-        Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x, y }
+        Canvas.fillPath context $ Canvas.arc context 
+          { start: 0.0, end: 2.0*pi, radius: playerRadiusN, x, y }
         Canvas.setFillStyle context "black"
-        Canvas.setFont context "40px sans"
+        Canvas.setFont context $ show textSize <> "px sans"
         Canvas.setTextAlign context AlignCenter
-        -- Canvas.setTextBaseline context Canvas.BaselineTop
-        Canvas.fillText context shape (x) (y+15.0)
-        -- Canvas.setStrokeStyle context "black"
-        -- Canvas.setLineWidth context 2.0
+        -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
+        Canvas.fillText context shape x (y+0.6*playerRadiusN)
         where
-        x = (Int.toNumber px - 1.0)/scaling
-        y = (Int.toNumber py - 1.0)/scaling
         playerStyle 
           | is_it = "lightcoral"
           | is_me = "bisque"
           | otherwise = "white"
         is_it = player == state.it
         is_me = player == state.myPlayer
+
+        playerRadiusN = (Int.toNumber playerRadius) / scaling
+        textSize = Int.round $ 1.6*playerRadiusN
+        x = (Int.toNumber px - 1.0)/scaling
+        y = (Int.toNumber py - 1.0)/scaling
       
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
