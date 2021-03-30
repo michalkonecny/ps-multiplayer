@@ -19,10 +19,11 @@ import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJ
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
 import Data.Int as Int
-import Data.List.Lazy (List)
+import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isNothing)
+import Data.Monoid (power)
 import Data.Newtype (class Newtype)
 import Data.String as String
 import Data.Symbol (SProxy(..))
@@ -93,7 +94,14 @@ playerRadius :: Number
 playerRadius = 25.0
 
 type MovingShape = { center :: MovingPoint, shape :: Shape, radius :: Number }
-type MovingShapeTime = { movingShape :: MovingShape, time :: Instant }
+
+shapesAreColliding :: MovingShape -> MovingShape -> Boolean
+shapesAreColliding 
+    {center: {pos: {x:x1,y:y1}}, radius: r1}
+    {center: {pos: {x:x2,y:y2}}, radius: r2} =
+  (sqr $ x1-x2) + (sqr $ y1-y2) <= (sqr $ r1+r2)
+  where
+  sqr a = a * a
 
 initialMPt :: Player -> MovingPoint
 initialMPt player = 
@@ -122,18 +130,31 @@ initialState =
   , m_GameState: Nothing
   }
 
+type MovingShapeTime = { movingShape :: MovingShape, time :: Instant }
+type PlayersData = Map Player MovingShapeTime
+
 type GameState = {
   myPlayer :: Player
 , it :: Player
-, playersData :: Map Player MovingShapeTime
+, itActive :: Boolean
+, playersData :: PlayersData
 }
 
 initialGameState :: GameState
 initialGameState =  
   { myPlayer: 0
   , it: 1
+  , itActive: true
   , playersData: Map.empty
   }
+
+getCollision :: Player -> MovingShape -> PlayersData -> Maybe Player
+getCollision player1 movingShape1 playersData =
+  map getPlayer $ find isColliding $ 
+    (Map.toUnfoldable $ Map.filterKeys (_ /= player1) playersData :: List _)
+  where
+  isColliding (Tuple _ {movingShape}) = shapesAreColliding movingShape1 movingShape
+  getPlayer (Tuple player _) = player
 
 data Action =
     HandleLobby Lobby.Output
@@ -316,7 +337,7 @@ rootComponent =
 
       case m_GameState of
         Nothing -> pure unit
-        Just {myPlayer,it,playersData} -> do
+        Just {myPlayer,it,itActive,playersData} -> do
           -- if this is a new player, send out my position for them to see:
           case player `Map.member` playersData of
             true -> pure unit
@@ -327,23 +348,25 @@ rootComponent =
           H.modify_ $ updateGameState $ \ st -> 
             st { playersData = Map.insert player {movingShape, time} st.playersData }
           passStateToCanvas
-
--- TODO
-          -- if I am it, check whether I caught them:
-          -- let {pos} = posShape
-          -- case Map.lookup myPlayer playersData of
-          --   Nothing -> pure unit
-          --   Just {posShape: {pos: myPos}} -> do
-          --     if myPlayer == it && pos == myPos
-          --       then do
-          --         -- gotcha! update it locally:
-          --         H.modify_ $ updateGameState $ _ { it = player }
-          --         passStateToCanvas
-          --         -- and announce new "it":
-          --         liftEffect $ sendIt m_ws player
-          --       else pure unit
+          
+          -- investigate my collisions:
+          case Map.lookup myPlayer playersData of
+            Nothing -> pure unit
+            Just {movingShape: myMovingShape} -> do
+              -- if I am it, check whether I caught them:
+              when (myPlayer == it && itActive && movingShape `shapesAreColliding` myMovingShape) do
+                -- gotcha! update it locally:
+                H.modify_ $ updateGameState $ _ { it = player }
+                passStateToCanvas
+                -- and announce new "it":
+                liftEffect $ sendIt m_ws player
+              -- if I am it but inactive, check whether I should turn active:
+              when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer myMovingShape playersData)) do
+                -- not touching anyone any more, should become active now!
+                H.modify_ $ updateGameState $ _ { itActive = true }
+                passStateToCanvas
     SetIt it -> do
-      H.modify_ $ updateGameState $ _ { it = it }
+      H.modify_ $ updateGameState $ _ { it = it, itActive = false }
       passStateToCanvas
     HandleKeyDown _sid ev -> do
       case KE.key ev of
@@ -391,7 +414,7 @@ rootComponent =
     {m_ws,m_GameState} <- H.get
     case m_GameState of
       Nothing -> pure unit
-      Just {myPlayer,it,playersData} -> do
+      Just {myPlayer,it,itActive,playersData} -> do
         case Map.lookup myPlayer playersData of
           Nothing -> pure unit
           Just {movingShape} -> do
@@ -403,20 +426,23 @@ rootComponent =
             passStateToCanvas
             -- send new position to peers:
             liftEffect $ sendMyPos m_ws {player: myPlayer, movingShape: newMovingShape}
-            -- if I am it, check whether I caught someone: TODO
-            -- if myPlayer == it
-            --   then do
-            --     let {pos} = newPosShape
-            --     case Map.lookup pos (byPos playersData) of
-            --       Just {player} | player /= myPlayer -> do
-            --         -- gotcha! update it locally:
-            --         H.modify_ $ updateGameState $ _ { it = player }
-            --         passStateToCanvas
-            --         -- and announce new "it":
-            --         liftEffect $ sendIt m_ws player
-            --       _ -> pure unit
-            --   else 
-            pure unit
+
+            -- if I am it, check whether I caught someone:
+            when (myPlayer == it && itActive) do
+              case getCollision myPlayer newMovingShape playersData of
+                Nothing -> pure unit
+                Just player -> do
+                    -- gotcha! update it locally:
+                    H.modify_ $ updateGameState $ _ { it = player }
+                    passStateToCanvas
+                    -- and announce new "it":
+                    liftEffect $ sendIt m_ws player
+            -- if I am it but inactive, check whether I should become active:
+            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingShape playersData)) do
+              -- not touching anyone any more, should become active now!
+              H.modify_ $ updateGameState $ _ { itActive = true }
+              passStateToCanvas
+
 
   sendMyPos (Just ws) playerPosShape = do
       WS.sendString ws $ stringify $ encodeJson playerPosShape
