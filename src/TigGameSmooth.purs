@@ -52,6 +52,8 @@ import Halogen.VDom.Driver (runUI)
 import Lobby (Output(..), Player, Shape)
 import Lobby as Lobby
 import Math (pi)
+import MovingPoint (MovingPoint)
+import MovingPoint as MPt
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
@@ -73,66 +75,36 @@ pulsePeriodMs = 100.0
 pulseTimeoutMs :: Number
 pulseTimeoutMs = 1000.0
 
--- internal units are this much larger than display units
-scaling :: Number
-scaling = 10.0
+maxX :: Number
+maxX = 800.0
+maxY :: Number
+maxY = 800.0
 
--- display maximum x is maxX / scaling
-maxX :: Int
-maxX = 8000
-maxY :: Int
-maxY = 8000
+maxSpeed :: Number
+maxSpeed = 20.0
 
-maxSpeed :: Int
-maxSpeed = 200
+slowDownRatio :: Number
+slowDownRatio = 0.9
 
-speedIncrement :: Int
-speedIncrement = 20
+speedIncrement :: Number
+speedIncrement = 2.0
 
-playerRadius :: Int
-playerRadius = 250
+playerRadius :: Number
+playerRadius = 25.0
 
-type Pos = { x :: Int, y :: Int }
-type PosShape = { pos :: Pos, velo :: Pos, accell :: Pos, shape :: Shape }
-type PosShapeTime = { posShape :: PosShape, time :: Instant }
+type MovingShape = { center :: MovingPoint, shape :: Shape, radius :: Number }
+type MovingShapeTime = { movingShape :: MovingShape, time :: Instant }
 
-initialPos :: Player -> Pos
-initialPos player = 
-  { x: 1 + (player*1007) `mod` maxX, 
-    y: 1 + (player*1007) `mod` maxY }
-
-setAccelX :: Int -> PosShape -> PosShape
-setAccelX ddx ps@{accell: a} = ps { accell = a { x = ddx } }
-
-setAccelY :: Int -> PosShape -> PosShape
-setAccelY ddy ps@{accell: a} = ps { accell = a { y = ddy } }
-
-resetAccelX :: Int -> PosShape -> PosShape
-resetAccelX ddx ps@{accell: a@{x}} 
-  | x == ddx = ps { accell = a { x = 0 } }
-  | otherwise = ps
-
-resetAccelY :: Int -> PosShape -> PosShape
-resetAccelY ddy ps@{accell: a@{y}} 
-  | y == ddy = ps { accell = a { y = 0 } }
-  | otherwise = ps
-
-move :: PosShape -> PosShape
-move ps@{pos: {x,y}, velo: {x:dx, y:dy}, accell: {x:ddx, y:ddy}} = 
-  ps 
-  { 
-    pos = 
-      { x: (x + dx - 1) `mod` maxX + 1, 
-        y: ((y + dy - 1) `mod` maxY) + 1} 
-  , velo = -- gradually slow down:
-      { x: slowDown (((dx + ddx) `min` maxSpeed) `max` (- maxSpeed)),
-        y: slowDown (((dy + ddy) `min` maxSpeed) `max` (- maxSpeed))
-      }
+initialMPt :: Player -> MovingPoint
+initialMPt player = 
+  { pos:
+    { x: (playerN*107.0) `mod` maxX, 
+      y: (playerN*107.0) `mod` maxY }
+  , velo: { x: 0.0, y: 0.0 }
+  , accell: { x: 0.0, y: 0.0 }
   }
   where
-  slowDown v 
-    | v >= 0 = (Int.round (0.9 * Int.toNumber v))
-    | otherwise = - (Int.round (0.9 * Int.toNumber (-v)))
+  playerN = Int.toNumber player
 
 type State = {
   m_ws :: Maybe WS.WebSocket
@@ -153,7 +125,7 @@ initialState =
 type GameState = {
   myPlayer :: Player
 , it :: Player
-, playersData :: Map Player PosShapeTime
+, playersData :: Map Player MovingShapeTime
 }
 
 initialGameState :: GameState
@@ -163,23 +135,17 @@ initialGameState =
   , playersData: Map.empty
   }
 
-byPos :: Map Player PosShapeTime -> Map Pos { player :: Player, shape :: String }
-byPos playersData = 
-  Map.fromFoldable $ 
-  map (\(Tuple player {posShape: {pos, shape}}) -> Tuple pos {player, shape}) $ 
-  (Map.toUnfoldable playersData :: List _)
-
 data Action =
     HandleLobby Lobby.Output
   | ReceiveMessageFromPeer String
-  | SetPlayer Player PosShape
+  | SetPlayer Player MovingShape
   | SetIt Player
   | HandleKeyDown H.SubscriptionId KeyboardEvent
   | HandleKeyUp H.SubscriptionId KeyboardEvent
   | Pulse
 
 -- message types:
-type PlayerPosShape = { player :: Player, posShape :: PosShape }
+type PlayerMovingShape = { player :: Player, movingShape :: MovingShape }
 type It = { it :: Player }
 
 messageToAction :: String -> Either String Action
@@ -188,8 +154,8 @@ messageToAction msg = do
   (parseSetPlayer json <|||> parseSetIt json) # describeErrs "Failed to decode JSON:\n"
   where
   parseSetPlayer json = do
-    ({player, posShape} :: PlayerPosShape) <- decodeJson json
-    pure (SetPlayer player posShape)
+    ({player, movingShape} :: PlayerMovingShape) <- decodeJson json
+    pure (SetPlayer player movingShape)
   parseSetIt json = do
     ({it} :: It) <- decodeJson json
     pure (SetIt it)
@@ -236,9 +202,7 @@ canvasComponent myPlayer =
         Hooks.modify_ modifyState (const newState)
         pure Nothing
     drawOnCanvas state
-    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (maxX `div` scalingI ), HP.height (maxY `div` scalingI) ]
-  where
-  scalingI = Int.round scaling
+    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (Int.ceil maxX), HP.height (Int.ceil maxY) ]
 
 newtype DrawOnCanvas hooks = DrawOnCanvas (Hooks.UseEffect hooks)
 
@@ -260,16 +224,16 @@ drawOnCanvas state =
     where
     drawBoard = do
       Canvas.setFillStyle context "lightgoldenrodyellow"
-      Canvas.fillRect context { x: 0.0, y: 0.0, width: (Int.toNumber maxX)/scaling, height: (Int.toNumber maxY)/scaling }
-    drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
+      Canvas.fillRect context { x: 0.0, y: 0.0, width: maxX, height: maxY }
+    drawPlayer (Tuple player {movingShape: {center: {pos: {x,y}}, shape, radius}}) =  do
         Canvas.setFillStyle context playerStyle
         Canvas.fillPath context $ Canvas.arc context 
-          { start: 0.0, end: 2.0*pi, radius: playerRadiusN, x, y }
+          { start: 0.0, end: 2.0*pi, radius, x, y }
         Canvas.setFillStyle context "black"
         Canvas.setFont context $ show textSize <> "px sans"
         Canvas.setTextAlign context AlignCenter
         -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
-        Canvas.fillText context shape x (y+0.6*playerRadiusN)
+        Canvas.fillText context shape x (y+0.6*radius)
         where
         playerStyle 
           | is_it = "lightcoral"
@@ -278,10 +242,7 @@ drawOnCanvas state =
         is_it = player == state.it
         is_me = player == state.myPlayer
 
-        playerRadiusN = (Int.toNumber playerRadius) / scaling
-        textSize = Int.round $ 1.6*playerRadiusN
-        x = (Int.toNumber px - 1.0)/scaling
-        y = (Int.toNumber py - 1.0)/scaling
+        textSize = Int.round $ 1.6*radius
       
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
@@ -316,15 +277,15 @@ rootComponent =
 
     HandleLobby (SelectedPlayer player shape) -> do
       -- set my player to the state:
-      let posShape = { pos: initialPos player, velo: {x:0, y:0}, accell: {x:0, y:0}, shape }
+      let movingShape = { center: initialMPt player, shape, radius: playerRadius }
       time <- liftEffect now
       H.modify_ $ _ { m_GameState = Just $
           initialGameState 
               { myPlayer = player
-              , playersData = Map.singleton player {posShape, time} } }
+              , playersData = Map.singleton player {movingShape, time} } }
       -- let others know our position:
       {m_ws} <- H.get
-      liftEffect $ sendMyPos m_ws {player, posShape}
+      liftEffect $ sendMyPos m_ws {player, movingShape}
 
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
@@ -344,7 +305,7 @@ rootComponent =
         Left err -> liftEffect $ log err
         Right action -> handleAction action
 
-    SetPlayer player posShape -> do
+    SetPlayer player movingShape -> do
       -- get current time:
       time <- liftEffect now
 
@@ -364,42 +325,46 @@ rootComponent =
               liftEffect $ sendIt m_ws it -- and send them also who is "it"
           -- update state:
           H.modify_ $ updateGameState $ \ st -> 
-            st { playersData = Map.insert player {posShape, time} st.playersData }
+            st { playersData = Map.insert player {movingShape, time} st.playersData }
           passStateToCanvas
 
+-- TODO
           -- if I am it, check whether I caught them:
-          let {pos} = posShape
-          case Map.lookup myPlayer playersData of
-            Nothing -> pure unit
-            Just {posShape: {pos: myPos}} -> do
-              if myPlayer == it && pos == myPos
-                then do
-                  -- gotcha! update it locally:
-                  H.modify_ $ updateGameState $ _ { it = player }
-                  passStateToCanvas
-                  -- and announce new "it":
-                  liftEffect $ sendIt m_ws player
-                else pure unit
+          -- let {pos} = posShape
+          -- case Map.lookup myPlayer playersData of
+          --   Nothing -> pure unit
+          --   Just {posShape: {pos: myPos}} -> do
+          --     if myPlayer == it && pos == myPos
+          --       then do
+          --         -- gotcha! update it locally:
+          --         H.modify_ $ updateGameState $ _ { it = player }
+          --         passStateToCanvas
+          --         -- and announce new "it":
+          --         liftEffect $ sendIt m_ws player
+          --       else pure unit
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it }
       passStateToCanvas
     HandleKeyDown _sid ev -> do
       case KE.key ev of
-        "ArrowLeft"  -> handleMoveBy (setAccelX (- speedIncrement))
-        "ArrowRight" -> handleMoveBy (setAccelX speedIncrement)
-        "ArrowUp"    -> handleMoveBy (setAccelY (- speedIncrement))
-        "ArrowDown"  -> handleMoveBy (setAccelY speedIncrement)
+        "ArrowLeft"  -> handleMoveBy (MPt.setAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (MPt.setAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (MPt.setAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (MPt.setAccelY speedIncrement)
         _ -> pure unit
     HandleKeyUp _sid ev -> do
       case KE.key ev of
-        "ArrowLeft"  -> handleMoveBy (resetAccelX (- speedIncrement))
-        "ArrowRight" -> handleMoveBy (resetAccelX speedIncrement)
-        "ArrowUp"    -> handleMoveBy (resetAccelY (- speedIncrement))
-        "ArrowDown"  -> handleMoveBy (resetAccelY speedIncrement)
+        "ArrowLeft"  -> handleMoveBy (MPt.resetAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (MPt.resetAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (MPt.resetAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (MPt.resetAccelY speedIncrement)
         _ -> pure unit
     Pulse -> do
       -- let others know we are still alive:
-      handleMoveBy move
+      handleMoveBy $ 
+        MPt.move slowDownRatio
+        >>> MPt.constrainSpeed maxSpeed 
+        >>> MPt.constrainLocation maxX maxY
       
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
@@ -429,28 +394,29 @@ rootComponent =
       Just {myPlayer,it,playersData} -> do
         case Map.lookup myPlayer playersData of
           Nothing -> pure unit
-          Just {posShape} -> do
+          Just {movingShape} -> do
             -- make the move locally:
-            let newPosShape = fn posShape
+            let newMovingShape = movingShape { center = fn movingShape.center }
             time <- liftEffect now
             H.modify_ $ updateGameState $ \st -> 
-              st { playersData = Map.insert myPlayer {posShape: newPosShape, time} st.playersData }
+              st { playersData = Map.insert myPlayer {movingShape: newMovingShape, time} st.playersData }
             passStateToCanvas
             -- send new position to peers:
-            liftEffect $ sendMyPos m_ws {player: myPlayer, posShape: newPosShape}
-            -- if I am it, check whether I caught someone:
-            if myPlayer == it
-              then do
-                let {pos} = newPosShape
-                case Map.lookup pos (byPos playersData) of
-                  Just {player} | player /= myPlayer -> do
-                    -- gotcha! update it locally:
-                    H.modify_ $ updateGameState $ _ { it = player }
-                    passStateToCanvas
-                    -- and announce new "it":
-                    liftEffect $ sendIt m_ws player
-                  _ -> pure unit
-              else pure unit
+            liftEffect $ sendMyPos m_ws {player: myPlayer, movingShape: newMovingShape}
+            -- if I am it, check whether I caught someone: TODO
+            -- if myPlayer == it
+            --   then do
+            --     let {pos} = newPosShape
+            --     case Map.lookup pos (byPos playersData) of
+            --       Just {player} | player /= myPlayer -> do
+            --         -- gotcha! update it locally:
+            --         H.modify_ $ updateGameState $ _ { it = player }
+            --         passStateToCanvas
+            --         -- and announce new "it":
+            --         liftEffect $ sendIt m_ws player
+            --       _ -> pure unit
+            --   else 
+            pure unit
 
   sendMyPos (Just ws) playerPosShape = do
       WS.sendString ws $ stringify $ encodeJson playerPosShape
