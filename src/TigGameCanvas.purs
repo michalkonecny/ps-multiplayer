@@ -37,6 +37,7 @@ import Effect.Class.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
 import EitherHelpers (mapLeft, (<|||>))
+import Graphics.Canvas (TextAlign(..))
 import Graphics.Canvas as Canvas
 import Halogen (liftEffect)
 import Halogen as H
@@ -221,8 +222,9 @@ drawOnCanvas state =
         Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x: x+20.0, y: y+20.0 }
         Canvas.setFillStyle context "black"
         Canvas.setFont context "40px sans"
+        Canvas.setTextAlign context AlignCenter
         -- Canvas.setTextBaseline context Canvas.BaselineTop
-        Canvas.fillText context shape x (y+35.0)
+        Canvas.fillText context shape (x+20.0) (y+35.0)
         -- Canvas.setStrokeStyle context "black"
         -- Canvas.setLineWidth context 2.0
         where
