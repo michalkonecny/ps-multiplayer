@@ -4,8 +4,8 @@ import Prelude
 
 import Effect (Effect)
 import TigGameCanvas (mainTigGameCanvas)
--- import TigGameGrid (mainTigGameGrid)
+-- import TigGameTable (mainTigGameTable)
 
 main :: Effect Unit
--- main = mainTigGameGrid
+-- main = mainTigGameTable
 main = mainTigGameCanvas
