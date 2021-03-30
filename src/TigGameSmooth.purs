@@ -18,7 +18,7 @@ import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
-import Data.Int (toNumber)
+import Data.Int as Int
 import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
@@ -73,10 +73,19 @@ pulsePeriodMs = 100.0
 pulseTimeoutMs :: Number
 pulseTimeoutMs = 1000.0
 
+scaling :: Number
+scaling = 10.0
+
 maxX :: Int
-maxX = 800
+maxX = 8000
 maxY :: Int
-maxY = 800
+maxY = 8000
+
+maxSpeed :: Int
+maxSpeed = 100
+
+speedIncrement :: Int
+speedIncrement = 10
 
 type Pos = { x :: Int, y :: Int }
 type PosShape = { pos :: Pos, velo :: Pos, shape :: Shape }
@@ -84,28 +93,36 @@ type PosShapeTime = { posShape :: PosShape, time :: Instant }
 
 initialPos :: Player -> Pos
 initialPos player = 
-  { x: 1 + (player*107) `mod` maxX, 
-    y: 1 + (player*107) `mod` maxY }
+  { x: 1 + (player*1007) `mod` maxX, 
+    y: 1 + (player*1007) `mod` maxY }
 
 initialVelo :: Pos
 initialVelo = {x:0, y:0}
 
 accelX :: Int -> PosShape -> PosShape
 accelX ddx ps@{velo: v@{x:dx}} = 
-  ps { velo = v { x = dx + ddx } }
+  ps { velo = v { x = ((dx + ddx) `min` maxSpeed) `max` (- maxSpeed)} }
 
 accelY :: Int -> PosShape -> PosShape
 accelY ddy ps@{velo: v@{y:dy}} = 
-  ps { velo = v { y = dy + ddy } }
+  ps { velo = v { y = ((dy + ddy) `min` maxSpeed) `max` (- maxSpeed) } }
 
 move :: PosShape -> PosShape
 move ps@{pos: {x,y}, velo: {x:dx, y:dy}} = 
   ps 
   { 
     pos = 
-      {x: (x + dx - 1) `mod` maxX + 1, 
-      y: (y + dy - 1) `mod` maxY - 1} 
+      { x: (x + dx - 1) `mod` maxX + 1, 
+        y: ((y + dy - 1) `mod` maxY) + 1} 
+  , velo = -- gradually slow down:
+      { x: slowDown dx,
+        y: slowDown dy
+      }
   }
+  where
+  slowDown v 
+    | v >= 0 = (Int.round (0.9 * Int.toNumber v))
+    | otherwise = - (Int.round (0.9 * Int.toNumber (-v)))
 
 type State = {
   m_ws :: Maybe WS.WebSocket
@@ -208,7 +225,9 @@ canvasComponent myPlayer =
         Hooks.modify_ modifyState (const newState)
         pure Nothing
     drawOnCanvas state
-    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width maxX, HP.height maxY ]
+    Hooks.pure $ HH.canvas [ HP.id_ "canvas", HP.width (maxX `div` scalingI ), HP.height (maxY `div` scalingI) ]
+  where
+  scalingI = Int.round scaling
 
 newtype DrawOnCanvas hooks = DrawOnCanvas (Hooks.UseEffect hooks)
 
@@ -230,21 +249,21 @@ drawOnCanvas state =
     where
     drawBoard = do
       Canvas.setFillStyle context "lightgoldenrodyellow"
-      Canvas.fillRect context { x: 0.0, y: 0.0, width: toNumber maxX, height: toNumber maxY }
+      Canvas.fillRect context { x: 0.0, y: 0.0, width: (Int.toNumber maxX)/scaling, height: (Int.toNumber maxY)/scaling }
     drawPlayer (Tuple player {posShape: {pos: {x: px, y: py}, shape}}) =  do
         Canvas.setFillStyle context playerStyle
         -- Canvas.fillRect context { x, y, width: 40.0, height: 40.0 }
-        Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x: x+20.0, y: y+20.0 }
+        Canvas.fillPath context $ Canvas.arc context { start: 0.0, end: 2.0*pi, radius: 25.0, x, y }
         Canvas.setFillStyle context "black"
         Canvas.setFont context "40px sans"
         Canvas.setTextAlign context AlignCenter
         -- Canvas.setTextBaseline context Canvas.BaselineTop
-        Canvas.fillText context shape (x+20.0) (y+35.0)
+        Canvas.fillText context shape (x) (y+15.0)
         -- Canvas.setStrokeStyle context "black"
         -- Canvas.setLineWidth context 2.0
         where
-        x = toNumber px - 1.0
-        y = toNumber py - 1.0
+        x = (Int.toNumber px - 1.0)/scaling
+        y = (Int.toNumber py - 1.0)/scaling
         playerStyle 
           | is_it = "lightcoral"
           | is_me = "bisque"
@@ -349,10 +368,10 @@ rootComponent =
       passStateToCanvas
     HandleKey _sid ev -> do
       case KE.key ev of
-        "ArrowLeft" -> handleMoveBy (accelX (-1))
-        "ArrowRight" -> handleMoveBy (accelX (1))
-        "ArrowUp" -> handleMoveBy (accelY (-1))
-        "ArrowDown" -> handleMoveBy (accelY (1))
+        "ArrowLeft" -> handleMoveBy (accelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (accelX speedIncrement)
+        "ArrowUp" -> handleMoveBy (accelY (- speedIncrement))
+        "ArrowDown" -> handleMoveBy (accelY speedIncrement)
         _ -> pure unit
     Pulse -> do
       -- let others know we are still alive:
