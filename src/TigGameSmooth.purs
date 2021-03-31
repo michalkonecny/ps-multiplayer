@@ -68,7 +68,7 @@ mainTigGame = do
     runUI rootComponent unit body
 
 pulsePeriodMs :: Number
-pulsePeriodMs = 100.0
+pulsePeriodMs = 50.0
 
 pulseTimeoutMs :: Number
 pulseTimeoutMs = 1000.0
