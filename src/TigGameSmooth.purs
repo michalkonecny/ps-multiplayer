@@ -393,7 +393,7 @@ rootComponent =
       {m_GameState} <- H.get
       case m_GameState of
         Nothing -> pure unit
-        Just {playersData} -> do
+        Just {playersData,it,myPlayer} -> do
           let deadPlayers = Map.filter (olderThan timeCutOff) playersData
 
           -- tell Lobby to remove these players:
@@ -401,8 +401,20 @@ rootComponent =
             else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
 
           -- delete the old players from state:
-          H.modify_ $ updateGameState $ \st -> 
-            st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
+          let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
+
+          -- check whether "it" exists
+          let itGone = not $ Map.member it playersData2
+          let m_minPlayer = Map.findMin playersData2
+          case m_minPlayer of
+            Just {key: minPlayer} | itGone && minPlayer == myPlayer -> do
+              -- "it" disappeared and we are the player with lowerst number, thus we should be the new it!
+              H.modify_ $ updateGameState $ _ { playersData = playersData2, it = myPlayer }
+              {m_ws} <- H.get
+              liftEffect $ sendIt m_ws myPlayer
+            _ -> 
+              H.modify_ $ updateGameState $ _ { playersData = playersData2 }
+
 
   olderThan timeCutOff {time} =
     let (Milliseconds timeMs) = unInstant time in
