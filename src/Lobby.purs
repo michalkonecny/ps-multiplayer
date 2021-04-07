@@ -14,10 +14,13 @@ module Lobby where
 
 import Prelude
 
+import Control.SequenceBuildMonad (ae, sb)
+import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.String as String
+import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Halogen (liftAff, liftEffect)
@@ -31,12 +34,19 @@ import Web.Socket.WebSocket as WS
 defaultWSURL :: String
 defaultWSURL = "ws://localhost:3000"
 
-defaultPlayerShape :: Shape
-defaultPlayerShape = "😷"
--- playerShape = "X"
-
 type Player = Int
-type Shape = String
+
+type Key = String
+type Value = String
+type Values = Map.Map Key Value
+
+type ValueSpec = 
+  { key :: Key
+  , maxLength :: Int
+  , description :: String
+  , default :: String 
+  }
+type ValuesSpec = Array ValueSpec
 
 playersForSelection :: Array Player
 playersForSelection = [1,2,3,4,5]
@@ -54,7 +64,7 @@ updateSelectingPlayer fn = case _ of
   state -> state
 
 type SelectingPlayerState = {  
-  shape :: Shape
+  values :: Values
 , players :: Set Player
 }
 
@@ -67,8 +77,8 @@ initialState = Connecting { maybeMsg: Nothing }
 
 data Action =
     SetWSURL String
-  | SetShape Shape
-  | SelectPlayer Player Shape
+  | SetValue Key Value
+  | SelectPlayer Player Values
 
 data Query a =
     NewPlayer Player a
@@ -76,10 +86,10 @@ data Query a =
 
 data Output =
     Connected WS.WebSocket
-  | SelectedPlayer Player Shape
+  | SelectedPlayer Player Values
 
-component :: forall input. H.Component HH.HTML Query input Output Aff
-component =
+component :: forall input. ValuesSpec -> H.Component HH.HTML Query input Output Aff
+component valuesSpec =
   H.mkComponent
     { 
       initialState: \a -> initialState
@@ -95,34 +105,44 @@ component =
     HH.div [] [ enterWSURL ]
     where
     enterWSURL = do
-      HH.div_ [
-        HH.div_ [HH.span_ 
-          [HH.text "Enter broadcast server web-socket URL: ws://", 
-          HH.input [HP.value (String.drop 5 defaultWSURL), HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _)) ]]]
-        , HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]]
-  render (SelectingPlayer {shape, players}) =
-    HH.div_ [ 
-      HH.div_ [chooseShape],
-      HH.div_ [choosePlayer] 
-    ]
+      HH.div_ $ sb do
+        ae$ HH.div_ $ sb do 
+          ae$ HH.span_ $ sb do
+            ae$ HH.text "Enter broadcast server web-socket URL: ws://"
+            ae$ HH.input $ sb do
+              ae$ HP.value (String.drop 5 defaultWSURL)
+              ae$ HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _))
+        ae$ HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]
+  render (SelectingPlayer {values, players}) = 
+    HH.div_ $ sb do
+      ae$ HH.div_ [chooseValues]
+      ae$ HH.div_ [choosePlayer] 
     where
     choosePlayer = 
-      HH.div_ [
-        HH.text "Please, select a player number:",
-        HH.table_ $ [HH.tr_ $ map playerButton playersForSelection]]
+      HH.div_ $ sb do
+        ae$ HH.text "Please, select a player number:"
+        ae$ HH.table_ $ sb do
+          ae$ HH.tr_ $ map playerButton playersForSelection
     playerButton player = 
-      HH.td_ [
-        HH.button 
-          [ HP.title label, 
-            HP.enabled (not $ player `Set.member` players),
-            HE.onClick \_ -> Just (SelectPlayer player shape)] 
-          [ HH.text label ]]
+      HH.td_ $ sb do
+        ae$ HH.button
+          (sb do 
+            ae$ HP.title label
+            ae$ HP.enabled (not $ player `Set.member` players)
+            ae$ HE.onClick \_ -> Just (SelectPlayer player values))
+          [ HH.text label ]
       where
       label = "Player " <> show player
-    chooseShape =
-      HH.div_ [
-        HH.text "My player's Unicode character:",
-        HH.input [HP.value shape, HP.attr (H.AttrName "size") "1", HE.onValueInput (Just <<< SetShape) ]]
+    chooseValues =
+      HH.table_ $ map makeRow valuesSpec
+      where
+      makeRow {key, maxLength, description} =
+        HH.tr_ $ sb do
+          ae$ HH.text $ description <> ": "
+          ae$ HH.input $ sb do 
+            ae$ HP.value (fromMaybe "" $ Map.lookup key values)
+            ae$ HP.attr (H.AttrName "size") $ show maxLength
+            ae$ HE.onValueInput (Just <<< SetValue key)
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery (NewPlayer player a) = do
@@ -142,9 +162,14 @@ component =
           H.modify_ $ updateConnecting $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
           H.raise (Connected ws)
-          H.put $ SelectingPlayer { shape: defaultPlayerShape, players: Set.empty }
+          H.put $ SelectingPlayer { values: defaultValues, players: Set.empty }
 
-    SetShape shape -> do
-      H.modify_ $ updateSelectingPlayer $ \st -> st { shape = shape }
+    SetValue key value -> do
+      H.modify_ $ updateSelectingPlayer $ \st -> st { values = Map.insert key value st.values }
     SelectPlayer player shape -> do
-      H.raise (SelectedPlayer player shape)      
+      H.raise (SelectedPlayer player shape)
+
+  defaultValues = Map.fromFoldable $ map getDefault valuesSpec
+    where
+    getDefault {key,default} = Tuple key default
+

@@ -15,6 +15,7 @@ module TigGameTable(mainTigGame) where
 import Prelude
 
 import Control.Monad.Rec.Class (forever)
+import Control.SequenceBuildMonad (singleton)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
 import Data.DateTime.Instant (Instant, unInstant)
@@ -22,7 +23,7 @@ import Data.Either (Either(..))
 import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
@@ -42,7 +43,7 @@ import Halogen.HTML.Properties as HP
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
-import Lobby (Output(..), Player, Shape)
+import Lobby (Output(..), Player)
 import Lobby as Lobby
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
@@ -69,6 +70,11 @@ maxX :: Int
 maxX = 20
 maxY :: Int
 maxY = 20
+
+type Shape = String
+
+defaultShape :: Shape
+defaultShape = "😷"
 
 type Pos = { x :: Int, y :: Int }
 type PosShape = { pos :: Pos, shape :: Shape }
@@ -151,7 +157,7 @@ rootComponent =
     }
   where
   render {m_myPlayer: Nothing} =
-    HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
+    HH.slot _lobby 0 (Lobby.component tigLobbySpec) unit (Just <<< HandleLobby)
   render {m_myPlayer: Just myPlayer, it, playersData} =
     HH.div [] [ gameBoard ]
     where
@@ -172,6 +178,12 @@ rootComponent =
               | otherwise -> Tuple shape "playerCell"
             _ -> Tuple "" "blankCell"
 
+  tigLobbySpec = singleton $
+    { key: "shape"
+    , maxLength: 10
+    , description: "My player's Unicode name"
+    , default: defaultShape
+    }
 
   handleAction = case _ of
     HandleLobby (Connected ws) -> do
@@ -187,8 +199,9 @@ rootComponent =
       -- start pulse timer:
       void $ H.subscribe pulseTimer
 
-    HandleLobby (SelectedPlayer player shape) -> do
+    HandleLobby (SelectedPlayer player values) -> do
       -- set my player to the state:
+      let shape = fromMaybe "?" $ Map.lookup "shape" values
       let posShape = { pos: initialPos player, shape }
       time <- liftEffect now
       H.modify_ $ \ st -> st { m_myPlayer = Just player, playersData = Map.singleton player {posShape, time} }

@@ -15,6 +15,7 @@ module TigGameSmooth(mainTigGame) where
 import Prelude
 
 import Control.Monad.Rec.Class (forever)
+import Control.SequenceBuildMonad (singleton)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
@@ -22,7 +23,7 @@ import Data.Int as Int
 import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing)
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Traversable (sequence, traverse_)
@@ -47,7 +48,7 @@ import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
-import Lobby (Output(..), Player, Shape)
+import Lobby (Output(..), Player)
 import Lobby as Lobby
 import Math (pi)
 import MovingPoint (MovingPoint)
@@ -89,6 +90,11 @@ speedIncrement = 2.0
 
 playerRadius :: Number
 playerRadius = 25.0
+
+type Shape = String
+
+defaultShape :: Shape
+defaultShape = "😷"
 
 type MovingShape = { center :: MovingPoint, shape :: Shape, radius :: Number }
 
@@ -274,9 +280,16 @@ rootComponent =
     }
   where
   render {m_GameState: Nothing} =
-    HH.slot _lobby 0 Lobby.component unit (Just <<< HandleLobby)
+    HH.slot _lobby 0 (Lobby.component tigLobbySpec) unit (Just <<< HandleLobby)
   render {m_GameState: Just { myPlayer, it, playersData}} =
     HH.slot _canvas 1 (canvasComponent myPlayer) unit Just
+
+  tigLobbySpec = singleton $
+    { key: "shape"
+    , maxLength: 10
+    , description: "My player's Unicode name"
+    , default: defaultShape
+    }
 
   handleAction = case _ of
     HandleLobby (Connected ws) -> do
@@ -292,8 +305,9 @@ rootComponent =
       -- start pulse timer:
       void $ H.subscribe pulseTimer
 
-    HandleLobby (SelectedPlayer player shape) -> do
+    HandleLobby (SelectedPlayer player values) -> do
       -- set my player to the state:
+      let shape = fromMaybe "?" $ Map.lookup "shape" values
       let movingShape = { center: initialMPt player, shape, radius: playerRadius }
       time <- liftEffect now
       H.modify_ $ _ { m_GameState = Just $
