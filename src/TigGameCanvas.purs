@@ -15,7 +15,7 @@ module TigGameCanvas(mainTigGame) where
 import Prelude
 
 import Control.Monad.Rec.Class (forever)
-import Control.SequenceBuildMonad (singleton)
+import Control.SequenceBuildMonad (ae, sb)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
@@ -260,12 +260,13 @@ rootComponent =
   render {m_GameState: Just { myPlayer, it, playersData}} =
     HH.slot _canvas 1 (canvasComponent myPlayer) unit Just
 
-  tigLobbySpec = singleton $
-    { key: "shape"
-    , maxLength: 10
-    , description: "My player's Unicode name"
-    , default: defaultShape
-    }
+  tigLobbySpec = sb do
+    ae$
+      { key: "shape"
+      , maxLength: 10
+      , description: "My player's Unicode name"
+      , default: defaultShape
+      }
 
   handleAction = case _ of
     HandleLobby (Connected ws) -> do

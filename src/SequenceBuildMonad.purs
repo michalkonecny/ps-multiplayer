@@ -30,15 +30,13 @@ Please see the start of the source file for further usage examples.
 
 -}
 module Control.SequenceBuildMonad
-  (SequenceBuildMonad,sequenceBuild,sb,class HasSingleton,singleton,addElement,ae)
+  (SequenceBuildMonad,sequenceBuild,sb,addElement,ae)
 where
 
 import Prelude
 
-import Data.Array as Array
 import Data.Foldable (fold)
 import Data.List.Lazy (List)
-import Data.List.Lazy as List
 import Halogen.HTML as HH
 
 _test1A :: Array Int
@@ -97,17 +95,8 @@ sequenceBuild (SequenceBuildMonad ce _) = ce
 sb :: forall e c. SequenceBuildMonad c e Unit -> c e
 sb = sequenceBuild
 
-class HasSingleton c where
-  singleton :: forall e. e -> c e
+addElement :: forall e c. (Applicative c) => e -> SequenceBuildMonad c e Unit
+addElement e = SequenceBuildMonad (pure e) unit
 
-instance arrayHasSingleton :: HasSingleton Array where
-  singleton = Array.singleton
-
-instance listHasSingleton :: HasSingleton List where
-  singleton = List.singleton
-
-addElement :: forall e c. (HasSingleton c) => e -> SequenceBuildMonad c e Unit
-addElement e = SequenceBuildMonad (singleton e) unit
-
-ae :: forall e c. (HasSingleton c) => e -> SequenceBuildMonad c e Unit
+ae :: forall e c. (Applicative c) => e -> SequenceBuildMonad c e Unit
 ae = addElement

@@ -15,7 +15,7 @@ module TigGameTable(mainTigGame) where
 import Prelude
 
 import Control.Monad.Rec.Class (forever)
-import Control.SequenceBuildMonad (singleton)
+import Control.SequenceBuildMonad (ae, sb)
 import Data.Argonaut (JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array ((..))
 import Data.DateTime.Instant (Instant, unInstant)
@@ -178,12 +178,13 @@ rootComponent =
               | otherwise -> Tuple shape "playerCell"
             _ -> Tuple "" "blankCell"
 
-  tigLobbySpec = singleton $
-    { key: "shape"
-    , maxLength: 10
-    , description: "My player's Unicode name"
-    , default: defaultShape
-    }
+  tigLobbySpec = sb do
+    ae$
+      { key: "shape"
+      , maxLength: 10
+      , description: "My player's Unicode name"
+      , default: defaultShape
+      }
 
   handleAction = case _ of
     HandleLobby (Connected ws) -> do
