@@ -288,8 +288,8 @@ rootComponent =
   tigLobbySpec = sb do
     ae$
       { key: "shape"
-      , maxLength: 10
-      , description: "My player's Unicode name"
+      , maxLength: 5
+      , description: "Player's name"
       , default: defaultShape
       }
 

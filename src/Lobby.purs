@@ -116,23 +116,21 @@ component valuesSpec =
   render (SelectingPlayer {values, players}) = 
     HH.div_ $ sb do
       ae$ HH.div_ [chooseValues]
-      ae$ HH.div_ [choosePlayer] 
+      ae$ HH.div_ [joinGame] 
     where
-    choosePlayer = 
+    joinGame = 
       HH.div_ $ sb do
-        ae$ HH.text "Please, select a player number:"
-        ae$ HH.table_ $ sb do
-          ae$ HH.tr_ $ map playerButton playersForSelection
-    playerButton player = 
+        ae$ playButton
+    playButton = 
       HH.td_ $ sb do
         ae$ HH.button
           (sb do 
             ae$ HP.title label
-            ae$ HP.enabled (not $ player `Map.member` players)
             ae$ HE.onClick \_ -> Just (SelectPlayer player values))
           [ HH.text label ]
       where
-      label = "Player " <> show player
+      player = (fromMaybe 0 $ map (_.key) (Map.findMax players)) + 1
+      label = "Play"
     chooseValues =
       HH.table_ $ map makeRow valuesSpec
       where
