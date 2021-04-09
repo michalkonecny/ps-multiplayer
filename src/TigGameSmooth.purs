@@ -24,6 +24,7 @@ import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, isNothing)
+import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Traversable (sequence, traverse_)
@@ -342,7 +343,7 @@ rootComponent =
       time <- liftEffect now
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player)
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" movingShape.shape))
 
       {m_ws,m_GameState} <- H.get
 
@@ -413,7 +414,7 @@ rootComponent =
 
           -- tell Lobby to remove these players:
           if Map.isEmpty deadPlayers then pure unit
-            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
+            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
 
           -- delete the old players from state:
           let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData

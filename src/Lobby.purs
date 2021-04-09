@@ -15,10 +15,10 @@ module Lobby where
 import Prelude
 
 import Control.SequenceBuildMonad (ae, sb)
+import Data.Foldable (foldl)
+import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Set (Set)
-import Data.Set as Set
 import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff)
@@ -65,7 +65,7 @@ updateSelectingPlayer fn = case _ of
 
 type SelectingPlayerState = {  
   values :: Values
-, players :: Set Player
+, players :: Map Player Values
 }
 
 type ConnectingState = {  
@@ -81,8 +81,8 @@ data Action =
   | SelectPlayer Player Values
 
 data Query a =
-    NewPlayer Player a
-  | ClearPlayers (Set Player) a
+    NewPlayer Player Values a
+  | ClearPlayers (Array Player) a
 
 data Output =
     Connected WS.WebSocket
@@ -128,7 +128,7 @@ component valuesSpec =
         ae$ HH.button
           (sb do 
             ae$ HP.title label
-            ae$ HP.enabled (not $ player `Set.member` players)
+            ae$ HP.enabled (not $ player `Map.member` players)
             ae$ HE.onClick \_ -> Just (SelectPlayer player values))
           [ HH.text label ]
       where
@@ -145,11 +145,12 @@ component valuesSpec =
             ae$ HE.onValueInput (Just <<< SetValue key)
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
-  handleQuery (NewPlayer player a) = do
-    H.modify_ $ updateSelectingPlayer $ \st -> st { players = Set.insert player st.players }
+  handleQuery (NewPlayer player values a) = do
+    H.modify_ $ updateSelectingPlayer $ \st -> st { players = Map.insert player values st.players }
     pure Nothing
   handleQuery (ClearPlayers deadPlayers a) = do
-    H.modify_ $ updateSelectingPlayer $ \st -> st { players = st.players `Set.difference` deadPlayers }
+    let removePlayers mp = foldl (flip Map.delete) mp deadPlayers
+    H.modify_ $ updateSelectingPlayer $ \st -> st { players = removePlayers st.players }
     pure Nothing
 
   handleAction = case _ of
@@ -162,7 +163,7 @@ component valuesSpec =
           H.modify_ $ updateConnecting $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
           H.raise (Connected ws)
-          H.put $ SelectingPlayer { values: defaultValues, players: Set.empty }
+          H.put $ SelectingPlayer { values: defaultValues, players: Map.empty }
 
     SetValue key value -> do
       H.modify_ $ updateSelectingPlayer $ \st -> st { values = Map.insert key value st.values }

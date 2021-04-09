@@ -24,6 +24,7 @@ import Data.List.Lazy (List)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
@@ -157,7 +158,7 @@ rootComponent =
     }
   where
   render {m_myPlayer: Nothing} =
-    HH.slot _lobby 0 (Lobby.component tigLobbySpec) unit (Just <<< HandleLobby)
+    HH.slot _lobby 0 (Lobby.component (tigLobbySpec defaultShape)) unit (Just <<< HandleLobby)
   render {m_myPlayer: Just myPlayer, it, playersData} =
     HH.div [] [ gameBoard ]
     where
@@ -178,12 +179,12 @@ rootComponent =
               | otherwise -> Tuple shape "playerCell"
             _ -> Tuple "" "blankCell"
 
-  tigLobbySpec = sb do
+  tigLobbySpec shape = sb do
     ae$
       { key: "shape"
       , maxLength: 10
       , description: "My player's Unicode name"
-      , default: defaultShape
+      , default: shape
       }
 
   handleAction = case _ of
@@ -228,7 +229,8 @@ rootComponent =
       time <- liftEffect now
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player)
+      let {pos,shape} = posShape
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" shape))
 
       {m_ws,m_myPlayer,it,playersData} <- H.get
       -- if this is a new player, send out my position for them to see:
@@ -240,7 +242,6 @@ rootComponent =
       -- update state:
       H.modify_ $ \ st -> st { playersData = Map.insert player {posShape, time} st.playersData }
       -- if I am it, check whether I caught them:
-      let {pos} = posShape
       case lookupMaybe m_myPlayer playersData of
         Nothing -> pure unit
         Just (Tuple myPlayer {posShape: {pos: myPos}}) -> do
@@ -270,7 +271,7 @@ rootComponent =
       let deadPlayers = Map.filter (olderThan timeCutOff) playersData
       -- tell Lobby to remove these players:
       if Map.isEmpty deadPlayers then pure unit
-        else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
+        else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
       -- delete the old players from state:
       H.modify_ \st -> st { playersData = Map.filter (not <<< olderThan timeCutOff) st.playersData }
 

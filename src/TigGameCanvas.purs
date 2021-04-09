@@ -25,6 +25,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (class Newtype)
+import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))
 import Data.Traversable (sequence, traverse_)
@@ -313,7 +314,8 @@ rootComponent =
       time <- liftEffect now
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player)
+      let {pos,shape} = posShape
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" shape))
 
       {m_ws,m_GameState} <- H.get
 
@@ -332,7 +334,6 @@ rootComponent =
           passStateToCanvas
 
           -- if I am it, check whether I caught them:
-          let {pos} = posShape
           case Map.lookup myPlayer playersData of
             Nothing -> pure unit
             Just {posShape: {pos: myPos}} -> do
@@ -369,7 +370,7 @@ rootComponent =
 
           -- tell Lobby to remove these players:
           if Map.isEmpty deadPlayers then pure unit
-            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Map.keys deadPlayers)
+            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
 
           -- delete the old players from state:
           H.modify_ $ updateGameState $ \st -> 

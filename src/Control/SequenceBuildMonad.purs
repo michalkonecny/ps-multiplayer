@@ -121,7 +121,7 @@ instance sequenceMonad :: (Monoid (c e)) => Monad (SequenceBuildMonad c e)
 sequenceBuild :: forall e c. SequenceBuildMonad c e Unit -> c e
 sequenceBuild (SequenceBuildMonad ce _) = ce
 
--- | A shortcut for "sequenceBuild"
+-- | A shortcut for `sequenceBuild`
 sb :: forall e c. SequenceBuildMonad c e Unit -> c e
 sb = sequenceBuild
 
@@ -129,6 +129,7 @@ sb = sequenceBuild
 addElement :: forall e c. (Applicative c) => e -> SequenceBuildMonad c e Unit
 addElement e = SequenceBuildMonad (pure e) unit
 
--- | A shortcut for "addElement"
+-- | A shortcut for `addElement`
 ae :: forall e c. (Applicative c) => e -> SequenceBuildMonad c e Unit
 ae = addElement
+
