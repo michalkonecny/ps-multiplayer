@@ -120,34 +120,32 @@ initialMPt player =
 
 type State = {
   m_ws :: Maybe WS.WebSocket
-, m_GameState :: Maybe GameState
+, m_myPlayer :: Maybe Player
+, gameState :: GameState
 }
 
 updateGameState :: (GameState -> GameState) -> State -> State
-updateGameState fn state = case state of
-  {m_GameState: Just gameState} -> state {m_GameState = Just $ fn gameState}
-  _ -> state
+updateGameState fn state@{gameState} = state {gameState = fn gameState}
 
 initialState :: State
 initialState =  
-  { m_ws: Nothing 
-  , m_GameState: Nothing
+  { m_ws: Nothing
+  , m_myPlayer: Nothing 
+  , gameState: initialGameState
   }
 
 type MovingShapeTime = { movingShape :: MovingShape, time :: Instant }
 type PlayersData = Map Player MovingShapeTime
 
 type GameState = {
-  myPlayer :: Player
-, it :: Player
+  it :: Player
 , itActive :: Boolean
 , playersData :: PlayersData
 }
 
 initialGameState :: GameState
 initialGameState =  
-  { myPlayer: 0
-  , it: 1
+  { it: 1
   , itActive: true
   , playersData: Map.empty
   }
@@ -205,11 +203,11 @@ data CanvasQuery a = CanvasQuery GameState a
 passStateToCanvas :: forall action output m.
   H.HalogenM State action Slots output m Unit
 passStateToCanvas = do
-  {m_GameState} <- H.get
-  case m_GameState of
+  {m_myPlayer, gameState} <- H.get
+  case m_myPlayer of
     Nothing -> pure unit
-    Just st ->
-      void $ H.query _canvas 1 $ H.tell (CanvasQuery st)
+    Just _ ->
+      void $ H.query _canvas 1 $ H.tell (CanvasQuery gameState)
 
 {-
   Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
@@ -265,7 +263,7 @@ canvasComponent myPlayer =
               | is_me = "bisque"
               | otherwise = "white"
             is_it = player == state.it
-            is_me = player == state.myPlayer
+            is_me = player == myPlayer
 
             textSize = Int.round $ 1.6*radius
       
@@ -280,9 +278,9 @@ rootComponent =
       { handleAction = handleAction }
     }
   where
-  render {m_GameState: Nothing} =
+  render {m_myPlayer: Nothing} =
     HH.slot _lobby 0 (Lobby.component tigLobbySpec) unit (Just <<< HandleLobby)
-  render {m_GameState: Just { myPlayer, it, playersData}} =
+  render {m_myPlayer: Just myPlayer, gameState: {it, playersData}} =
     HH.slot _canvas 1 (canvasComponent myPlayer) unit Just
 
   tigLobbySpec = sb do
@@ -312,10 +310,10 @@ rootComponent =
       let shape = fromMaybe "?" $ Map.lookup "shape" values
       let movingShape = { center: initialMPt player, shape, radius: playerRadius }
       time <- liftEffect now
-      H.modify_ $ _ { m_GameState = Just $
-          initialGameState 
-              { myPlayer = player
-              , playersData = Map.singleton player {movingShape, time} } }
+      H.modify_ $ 
+        _ { m_myPlayer = Just player
+          , gameState = 
+            initialGameState { playersData = Map.singleton player {movingShape, time} } }
       -- let others know our position:
       {m_ws} <- H.get
       liftEffect $ sendMyPos m_ws {player, movingShape}
@@ -342,25 +340,24 @@ rootComponent =
       -- get current time:
       time <- liftEffect now
 
+      -- update state:
+      H.modify_ $ updateGameState $ \ st -> 
+        st { playersData = Map.insert player {movingShape, time} st.playersData }
+      passStateToCanvas      
+
       -- let the lobby know of this player:
       void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" movingShape.shape))
 
-      {m_ws,m_GameState} <- H.get
-
-      case m_GameState of
+      {m_ws,m_myPlayer,gameState:{it,itActive,playersData}} <- H.get
+      case m_myPlayer of
         Nothing -> pure unit
-        Just {myPlayer,it,itActive,playersData} -> do
+        Just myPlayer -> do
           -- if this is a new player, send out my position for them to see:
           case player `Map.member` playersData of
             true -> pure unit
             false -> do
               handleMoveBy identity -- ie do not move, but still send out our position
               liftEffect $ sendIt m_ws it -- and send them also who is "it"
-          -- update state:
-          H.modify_ $ updateGameState $ \ st -> 
-            st { playersData = Map.insert player {movingShape, time} st.playersData }
-          passStateToCanvas
-          
           -- investigate my collisions:
           case Map.lookup myPlayer playersData of
             Nothing -> pure unit
@@ -406,33 +403,33 @@ rootComponent =
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
       let timeCutOff = timeNow - pulseTimeoutMs
-      {m_GameState} <- H.get
-      case m_GameState of
+      {m_myPlayer, gameState:{playersData,it}} <- H.get
+      let deadPlayers = Map.filter (olderThan timeCutOff) playersData
+
+      -- tell Lobby to remove these players:
+      if Map.isEmpty deadPlayers then pure unit
+        else do
+          liftEffect $ log $ "deadPlayers = " <> show deadPlayers
+          void $ H.query _lobby 0 $ 
+            H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
+
+      -- delete the old players from state:
+      let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
+      H.modify_ $ updateGameState $ _ { playersData = playersData2 }
+
+      case m_myPlayer of
         Nothing -> pure unit
-        Just {playersData,it,myPlayer} -> do
-          let deadPlayers = Map.filter (olderThan timeCutOff) playersData
-
-          -- tell Lobby to remove these players:
-          liftEffect $ log "checking ClearPlayers"
-          if Map.isEmpty deadPlayers then pure unit
-            else 
-              void $ H.query _lobby 0 $ 
-                H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
-
-          -- delete the old players from state:
-          let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
-
+        Just myPlayer -> do
           -- check whether "it" exists
           let itGone = not $ Map.member it playersData2
           let m_minPlayer = Map.findMin playersData2
           case m_minPlayer of
             Just {key: minPlayer} | itGone && minPlayer == myPlayer -> do
               -- "it" disappeared and we are the player with lowerst number, thus we should be the new it!
-              H.modify_ $ updateGameState $ _ { playersData = playersData2, it = myPlayer }
+              H.modify_ $ updateGameState $ _ { it = myPlayer }
               {m_ws} <- H.get
               liftEffect $ sendIt m_ws myPlayer
-            _ -> 
-              H.modify_ $ updateGameState $ _ { playersData = playersData2 }
+            _ -> pure unit
 
 
   olderThan timeCutOff {time} =
@@ -440,10 +437,10 @@ rootComponent =
     timeMs < timeCutOff
 
   handleMoveBy moveCenter = do
-    {m_ws,m_GameState} <- H.get
-    case m_GameState of
+    {m_ws,m_myPlayer,gameState:{it,itActive,playersData}} <- H.get
+    case m_myPlayer of
       Nothing -> pure unit
-      Just {myPlayer,it,itActive,playersData} -> do
+      Just myPlayer -> do
         case Map.lookup myPlayer playersData of
           Nothing -> pure unit
           Just {movingShape} -> do
