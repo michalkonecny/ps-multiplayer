@@ -14,7 +14,7 @@ module Lobby where
 
 import Prelude
 
-import Control.SequenceBuildMonad (ae, sb)
+import Control.SequenceBuildMonad (ae, aes, sb)
 import Data.Foldable (foldl)
 import Data.Map (Map)
 import Data.Map as Map
@@ -23,7 +23,8 @@ import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
-import Halogen (liftAff, liftEffect)
+import Effect.Console (log)
+import Halogen (ClassName(..), liftAff, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -132,21 +133,33 @@ component valuesSpec =
       player = (fromMaybe 0 $ map (_.key) (Map.findMax players)) + 1
       label = "Play"
     chooseValues =
-      HH.table_ $ map makeRow valuesSpec
+      HH.table [HP.class_ (ClassName "lobby-values")] $ 
+        [headerRow] <> map makeRow valuesSpec
       where
+      headerRow = 
+        HH.tr_ $ sb do
+          ae$ HH.th_ []
+          ae$ HH.th_ [HH.text "mine"]
+          ae$ HH.th [HP.colSpan 4] [HH.text "others"]
       makeRow {key, maxLength, description} =
         HH.tr_ $ sb do
-          ae$ HH.text $ description <> ": "
-          ae$ HH.input $ sb do 
-            ae$ HP.value (fromMaybe "" $ Map.lookup key values)
-            ae$ HP.attr (H.AttrName "size") $ show maxLength
-            ae$ HE.onValueInput (Just <<< SetValue key)
-
+          ae$ HH.td_  [HH.text $ description <> ": "]
+          ae$ HH.td_ $ sb do
+            ae$ HH.input $ sb do 
+              ae$ HP.value (fromMaybe "" $ Map.lookup key values)
+              ae$ HP.attr (H.AttrName "size") $ show maxLength
+              ae$ HE.onValueInput (Just <<< SetValue key)
+          aes$ map playerCell playersArray
+        where
+        playerCell (Tuple _ pvalues) =
+          HH.td_ [HH.text $ fromMaybe "" $ Map.lookup key pvalues]
+      playersArray = Map.toUnfoldable players
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery (NewPlayer player values a) = do
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = Map.insert player values st.players }
     pure Nothing
   handleQuery (ClearPlayers deadPlayers a) = do
+    liftEffect $ log $ "ClearPlayers: deadPlayers = " <> (show deadPlayers) 
     let removePlayers mp = foldl (flip Map.delete) mp deadPlayers
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = removePlayers st.players }
     pure Nothing

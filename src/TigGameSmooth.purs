@@ -34,7 +34,7 @@ import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff)
-import Effect.Class.Console (log)
+import Effect.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
 import EitherHelpers (mapLeft, (<|||>))
@@ -413,8 +413,11 @@ rootComponent =
           let deadPlayers = Map.filter (olderThan timeCutOff) playersData
 
           -- tell Lobby to remove these players:
+          liftEffect $ log "checking ClearPlayers"
           if Map.isEmpty deadPlayers then pure unit
-            else void $ H.query _lobby 0 $ H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
+            else 
+              void $ H.query _lobby 0 $ 
+                H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
 
           -- delete the old players from state:
           let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
