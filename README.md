@@ -8,17 +8,23 @@ Players' browser instances communicate using broadcast messages via a web-socket
 
   1. Copy file ```ws-broadcast.js``` to a server reachable by all players and start it using node.js:
 
-    > npm install ws
-    > node ws-broadcast.js
-
+      ```bash
+      > npm install ws
+      > node ws-broadcast.js
+      ```
+  
   2. Install PureScript tools (if needed):
 
-    > npm install -g purescript@0.13.8
-    > npm install -g spago
+      ```bash
+      > npm install -g purescript@0.13.8
+      > npm install -g spago
+      ```
 
   3. Build index.js:
 
-    > spago bundle-app
+      ```bash
+      > spago bundle-app
+      ```
 
   4. Each player opens the provided HTML file tigGame.html in a browser and play.
 
