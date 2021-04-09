@@ -37,6 +37,8 @@ module Control.SequenceBuildMonad
   ,sb
   ,addElement
   ,ae
+  ,addElements
+  ,aes
   ,SequenceBuildMonad)
 where
 
@@ -133,3 +135,10 @@ addElement e = SequenceBuildMonad (pure e) unit
 ae :: forall e c. (Applicative c) => e -> SequenceBuildMonad c e Unit
 ae = addElement
 
+-- | Add an element to the sequence. This typically appears on each line of the do block.
+addElements :: forall e c. (Applicative c) => c e -> SequenceBuildMonad c e Unit
+addElements es = SequenceBuildMonad es unit
+
+-- | A shortcut for `addElements`
+aes :: forall e c. (Applicative c) => c e -> SequenceBuildMonad c e Unit
+aes = addElements
