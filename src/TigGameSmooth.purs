@@ -58,6 +58,7 @@ import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.Window (document) as Web
+import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket as WS
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
@@ -120,7 +121,7 @@ initialMPt player =
   playerN = Int.toNumber player
 
 type State = {
-  m_ws :: Maybe WS.WebSocket
+  m_ws :: Maybe WebSocket
 , m_myPlayer :: Maybe Player
 , gameState :: GameState
 }
@@ -172,6 +173,16 @@ data Action =
 type MovingPlayer = { player :: Player, movingBall :: MovingBall }
 type It = { it :: Player }
 
+sendMyPos :: Maybe WebSocket -> MovingPlayer -> Effect Unit
+sendMyPos (Just ws) playerPosName = do
+    WS.sendString ws $ stringify $ encodeJson playerPosName
+sendMyPos _ _ = pure unit
+
+sendIt :: Maybe WebSocket -> Player -> Effect Unit
+sendIt (Just ws) (it :: Player) = do
+    WS.sendString ws $ stringify $ encodeJson {it}
+sendIt _ _ = pure unit
+
 messageToAction :: String -> Either String Action
 messageToAction msg = do
   json <- (parseJson msg) # (describeErr "Failed to parse message as JSON: ")
@@ -201,8 +212,8 @@ type Slots =
 
 data CanvasQuery a = CanvasQuery GameState a
 
-passStateToCanvas :: forall action output m.
-  H.HalogenM State action Slots output m Unit
+passStateToCanvas :: forall output.
+  H.HalogenM State Action Slots output Aff Unit
 passStateToCanvas = do
   {m_myPlayer, gameState} <- H.get
   case m_myPlayer of
@@ -422,17 +433,17 @@ rootComponent =
           Nothing -> pure unit
           Just {movingBall} -> do
             -- make the move locally:
-            let newMovingName = movingBall { center = moveCenter movingBall.center }
+            let newMovingBall = movingBall { center = moveCenter movingBall.center }
             time <- liftEffect now
             H.modify_ $ updateGameState $ \st -> 
-              st { playersData = Map.insert myPlayer {movingBall: newMovingName, time} st.playersData }
+              st { playersData = Map.insert myPlayer {movingBall: newMovingBall, time} st.playersData }
             passStateToCanvas
             -- send new position to peers:
-            liftEffect $ sendMyPos m_ws {player: myPlayer, movingBall: newMovingName}
+            liftEffect $ sendMyPos m_ws {player: myPlayer, movingBall: newMovingBall}
 
             -- if I am it, check whether I caught someone:
             when (myPlayer == it && itActive) do
-              case getCollision myPlayer newMovingName playersData of
+              case getCollision myPlayer newMovingBall playersData of
                 Nothing -> pure unit
                 Just player -> do
                     -- gotcha! update it locally:
@@ -441,19 +452,10 @@ rootComponent =
                     -- and announce new "it":
                     liftEffect $ sendIt m_ws player
             -- if I am it but inactive, check whether I should become active:
-            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingName playersData)) do
+            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingBall playersData)) do
               -- not touching anyone any more, should become active now!
               H.modify_ $ updateGameState $ _ { itActive = true }
               passStateToCanvas
-
-
-  sendMyPos (Just ws) playerPosName = do
-      WS.sendString ws $ stringify $ encodeJson playerPosName
-  sendMyPos _ _ = pure unit
-
-  sendIt (Just ws) (it :: Player) = do
-      WS.sendString ws $ stringify $ encodeJson {it}
-  sendIt _ _ = pure unit
 
 -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
 pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
