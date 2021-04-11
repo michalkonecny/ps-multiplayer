@@ -92,15 +92,15 @@ speedIncrement = 2.0
 playerRadius :: Number
 playerRadius = 25.0
 
-type Shape = String
+type Name = String
 
-defaultShape :: Shape
-defaultShape = "😷"
+defaultName :: Name
+defaultName = "😷"
 
-type MovingShape = { center :: MovingPoint, shape :: Shape, radius :: Number }
+type MovingBall = { center :: MovingPoint, name :: Name, radius :: Number }
 
-shapesAreColliding :: MovingShape -> MovingShape -> Boolean
-shapesAreColliding 
+ballsAreColliding :: MovingBall -> MovingBall -> Boolean
+ballsAreColliding 
     {center: {pos: {x:x1,y:y1}}, radius: r1}
     {center: {pos: {x:x2,y:y2}}, radius: r2} =
   (sqr $ x1-x2) + (sqr $ y1-y2) <= (sqr $ r1+r2)
@@ -135,8 +135,8 @@ initialState =
   , gameState: initialGameState
   }
 
-type MovingShapeTime = { movingShape :: MovingShape, time :: Instant }
-type PlayersData = Map Player MovingShapeTime
+type MovingBallTime = { movingBall :: MovingBall, time :: Instant }
+type PlayersData = Map Player MovingBallTime
 
 type GameState = {
   it :: Player
@@ -151,25 +151,25 @@ initialGameState =
   , playersData: Map.empty
   }
 
-getCollision :: Player -> MovingShape -> PlayersData -> Maybe Player
-getCollision player1 movingShape1 playersData =
+getCollision :: Player -> MovingBall -> PlayersData -> Maybe Player
+getCollision player1 movingName1 playersData =
   map getPlayer $ find isColliding $ 
     (Map.toUnfoldable $ Map.filterKeys (_ /= player1) playersData :: List _)
   where
-  isColliding (Tuple _ {movingShape}) = shapesAreColliding movingShape1 movingShape
+  isColliding (Tuple _ {movingBall}) = ballsAreColliding movingName1 movingBall
   getPlayer (Tuple player _) = player
 
 data Action =
     HandleLobby Lobby.Output
   | ReceiveMessageFromPeer String
-  | SetPlayer Player MovingShape
+  | SetPlayer Player MovingBall
   | SetIt Player
   | HandleKeyDown H.SubscriptionId KeyboardEvent
   | HandleKeyUp H.SubscriptionId KeyboardEvent
   | Pulse
 
 -- message types:
-type PlayerMovingShape = { player :: Player, movingShape :: MovingShape }
+type MovingPlayer = { player :: Player, movingBall :: MovingBall }
 type It = { it :: Player }
 
 messageToAction :: String -> Either String Action
@@ -178,8 +178,8 @@ messageToAction msg = do
   (parseSetPlayer json <|||> parseSetIt json) # describeErrs "Failed to decode JSON:\n"
   where
   parseSetPlayer json = do
-    ({player, movingShape} :: PlayerMovingShape) <- decodeJson json
-    pure (SetPlayer player movingShape)
+    ({player, movingBall} :: MovingPlayer) <- decodeJson json
+    pure (SetPlayer player movingBall)
   parseSetIt json = do
     ({it} :: It) <- decodeJson json
     pure (SetIt it)
@@ -249,7 +249,7 @@ canvasComponent myPlayer =
         drawBoard = do
           Canvas.setFillStyle context "lightgoldenrodyellow"
           Canvas.fillRect context { x: 0.0, y: 0.0, width: maxX, height: maxY }
-        drawPlayer (Tuple player {movingShape: {center: {pos: {x,y}}, shape, radius}}) =  do
+        drawPlayer (Tuple player {movingBall: {center: {pos: {x,y}}, name, radius}}) =  do
             Canvas.setFillStyle context playerStyle
             Canvas.fillPath context $ Canvas.arc context 
               { start: 0.0, end: 2.0*pi, radius, x, y }
@@ -257,7 +257,7 @@ canvasComponent myPlayer =
             Canvas.setFont context $ show textSize <> "px sans"
             Canvas.setTextAlign context AlignCenter
             -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
-            Canvas.fillText context shape x (y+0.6*radius)
+            Canvas.fillText context name x (y+0.6*radius)
             where
             playerStyle 
               | is_it = "lightcoral"
@@ -286,10 +286,10 @@ rootComponent =
 
   tigLobbySpec = sb do
     ae$
-      { key: "shape"
+      { key: "name"
       , maxLength: 5
       , description: "Player's name"
-      , default: defaultShape
+      , default: defaultName
       }
 
   handleAction = case _ of
@@ -309,13 +309,13 @@ rootComponent =
 
     HandleLobby (SelectedPlayer player values) -> do
       -- set my player to the state:
-      let shape = fromMaybe "?" $ Map.lookup "shape" values
-      let movingShape = { center: initialMPt player, shape, radius: playerRadius }
+      let name = fromMaybe "?" $ Map.lookup "name" values
+      let movingBall = { center: initialMPt player, name, radius: playerRadius }
       time <- liftEffect now
       H.modify_ $ 
         _ { m_myPlayer = Just player
           , gameState = 
-            initialGameState { playersData = Map.singleton player {movingShape, time} } }
+            initialGameState { playersData = Map.singleton player {movingBall, time} } }
       -- force a Pulse now to sync with others asap:
       handleAction Pulse
 
@@ -338,17 +338,17 @@ rootComponent =
         Left err -> liftEffect $ log err
         Right action -> handleAction action
 
-    SetPlayer player movingShape -> do
+    SetPlayer player movingBall -> do
       -- get current time:
       time <- liftEffect now
 
       -- update state:
       H.modify_ $ updateGameState $ \ st -> 
-        st { playersData = Map.insert player {movingShape, time} st.playersData }
+        st { playersData = Map.insert player {movingBall, time} st.playersData }
       passStateToCanvas      
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" movingShape.shape))
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "name" movingBall.name))
 
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
@@ -370,12 +370,6 @@ rootComponent =
         "ArrowDown"  -> handleMoveBy (MPt.resetAccelY speedIncrement)
         _ -> pure unit
     Pulse -> do
-      -- let others know we are still alive:
-      handleMoveBy $ 
-        MPt.move slowDownRatio
-        >>> MPt.constrainSpeed maxSpeed 
-        >>> MPt.constrainLocation maxX maxY
-      
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
       let timeCutOff = timeNow - pulseTimeoutMs
@@ -385,7 +379,7 @@ rootComponent =
       -- tell Lobby to remove these players:
       if Map.isEmpty deadPlayers then pure unit
         else do
-          liftEffect $ log $ "deadPlayers = " <> show deadPlayers
+          -- liftEffect $ log $ "deadPlayers = " <> show deadPlayers
           void $ H.query _lobby 0 $ 
             H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
 
@@ -393,10 +387,16 @@ rootComponent =
       let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
       H.modify_ $ updateGameState $ _ { playersData = playersData2 }
 
-      -- check whether "it" disappeared and if so, reassign it: 
+      -- are we in the game play stage?
       case m_myPlayer of
         Nothing -> pure unit
         Just myPlayer -> do
+          -- let others know we are still alive:
+          handleMoveBy $ 
+            MPt.move slowDownRatio
+            >>> MPt.constrainSpeed maxSpeed 
+            >>> MPt.constrainLocation maxX maxY
+          
           -- check whether "it" exists
           let itGone = not $ Map.member it playersData2
           let m_minPlayer = Map.findMin playersData2
@@ -420,19 +420,19 @@ rootComponent =
       Just myPlayer -> do
         case Map.lookup myPlayer playersData of
           Nothing -> pure unit
-          Just {movingShape} -> do
+          Just {movingBall} -> do
             -- make the move locally:
-            let newMovingShape = movingShape { center = moveCenter movingShape.center }
+            let newMovingName = movingBall { center = moveCenter movingBall.center }
             time <- liftEffect now
             H.modify_ $ updateGameState $ \st -> 
-              st { playersData = Map.insert myPlayer {movingShape: newMovingShape, time} st.playersData }
+              st { playersData = Map.insert myPlayer {movingBall: newMovingName, time} st.playersData }
             passStateToCanvas
             -- send new position to peers:
-            liftEffect $ sendMyPos m_ws {player: myPlayer, movingShape: newMovingShape}
+            liftEffect $ sendMyPos m_ws {player: myPlayer, movingBall: newMovingName}
 
             -- if I am it, check whether I caught someone:
             when (myPlayer == it && itActive) do
-              case getCollision myPlayer newMovingShape playersData of
+              case getCollision myPlayer newMovingName playersData of
                 Nothing -> pure unit
                 Just player -> do
                     -- gotcha! update it locally:
@@ -441,14 +441,14 @@ rootComponent =
                     -- and announce new "it":
                     liftEffect $ sendIt m_ws player
             -- if I am it but inactive, check whether I should become active:
-            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingShape playersData)) do
+            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingName playersData)) do
               -- not touching anyone any more, should become active now!
               H.modify_ $ updateGameState $ _ { itActive = true }
               passStateToCanvas
 
 
-  sendMyPos (Just ws) playerPosShape = do
-      WS.sendString ws $ stringify $ encodeJson playerPosShape
+  sendMyPos (Just ws) playerPosName = do
+      WS.sendString ws $ stringify $ encodeJson playerPosName
   sendMyPos _ _ = pure unit
 
   sendIt (Just ws) (it :: Player) = do
