@@ -316,6 +316,8 @@ rootComponent =
         _ { m_myPlayer = Just player
           , gameState = 
             initialGameState { playersData = Map.singleton player {movingShape, time} } }
+      -- force a Pulse now to sync with others asap:
+      handleAction Pulse
 
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
