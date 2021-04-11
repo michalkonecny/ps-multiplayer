@@ -52,7 +52,7 @@ import Halogen.VDom.Driver (runUI)
 import Lobby (Output(..), Player)
 import Lobby as Lobby
 import Math (pi)
-import MovingPoint (MovingPoint)
+import MovingPoint (MovingPoint, constrainLocation)
 import MovingPoint as MPt
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
@@ -109,9 +109,10 @@ shapesAreColliding
 
 initialMPt :: Player -> MovingPoint
 initialMPt player = 
+  constrainLocation maxX maxY $
   { pos:
-    { x: (playerN*107.0) `mod` maxX, 
-      y: (playerN*107.0) `mod` maxY }
+    { x: playerN*107.0, 
+      y: playerN*107.0 }
   , velo: { x: 0.0, y: 0.0 }
   , accell: { x: 0.0, y: 0.0 }
   }
@@ -145,8 +146,8 @@ type GameState = {
 
 initialGameState :: GameState
 initialGameState =  
-  { it: 1
-  , itActive: true
+  { it: 0
+  , itActive: false
   , playersData: Map.empty
   }
 
@@ -315,9 +316,6 @@ rootComponent =
         _ { m_myPlayer = Just player
           , gameState = 
             initialGameState { playersData = Map.singleton player {movingShape, time} } }
-      -- let others know our position:
-      {m_ws} <- H.get
-      liftEffect $ sendMyPos m_ws {player, movingShape}
 
       -- subscribe to keyboard events:
       document <- liftEffect $ Web.document =<< Web.window
@@ -350,35 +348,9 @@ rootComponent =
       -- let the lobby know of this player:
       void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "shape" movingShape.shape))
 
-      {m_ws,m_myPlayer,gameState:{it,itActive,playersData}} <- H.get
-      case m_myPlayer of
-        Nothing -> pure unit
-        Just myPlayer -> do
-          -- if this is a new player, send out my position for them to see:
-          case player `Map.member` playersData of
-            true -> pure unit
-            false -> do
-              handleMoveBy identity -- ie do not move, but still send out our position
-              liftEffect $ sendIt m_ws it -- and send them also who is "it"
-          -- investigate my collisions:
-          case Map.lookup myPlayer playersData of
-            Nothing -> pure unit
-            Just {movingShape: myMovingShape} -> do
-              -- if I am it, check whether I caught them:
-              when (myPlayer == it && itActive && movingShape `shapesAreColliding` myMovingShape) do
-                -- gotcha! update it locally:
-                H.modify_ $ updateGameState $ _ { it = player }
-                passStateToCanvas
-                -- and announce new "it":
-                liftEffect $ sendIt m_ws player
-              -- if I am it but inactive, check whether I should turn active:
-              when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer myMovingShape playersData)) do
-                -- not touching anyone any more, should become active now!
-                H.modify_ $ updateGameState $ _ { itActive = true }
-                passStateToCanvas
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
-      passStateToCanvas
+      -- passStateToCanvas
 
     -- control my movement:
     HandleKeyDown _sid ev -> do
@@ -428,7 +400,7 @@ rootComponent =
           let m_minPlayer = Map.findMin playersData2
           case m_minPlayer of
             Just {key: minPlayer} | itGone && minPlayer == myPlayer -> do
-              -- "it" disappeared and we are the player with lowerst number, thus we should be the new it!
+              -- there is no "it" and we are the player with lowerst number, thus we should be it!
               H.modify_ $ updateGameState $ _ { it = myPlayer }
               {m_ws} <- H.get
               liftEffect $ sendIt m_ws myPlayer
