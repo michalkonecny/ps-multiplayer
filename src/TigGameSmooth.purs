@@ -292,6 +292,7 @@ rootComponent =
       }
 
   handleAction = case _ of
+    -- messages from the lobby:
     HandleLobby (Connected ws) -> do
       H.modify_ $ \st -> st { m_ws = Just ws }
       -- start listening to the web socket:
@@ -331,6 +332,7 @@ rootComponent =
           (HTMLDocument.toEventTarget document)
           (map (HandleKeyUp sid) <<< KE.fromEvent)
       
+    -- messages from peer players:
     ReceiveMessageFromPeer msg -> do
       case messageToAction msg of
         Left err -> liftEffect $ log err
@@ -378,7 +380,7 @@ rootComponent =
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
       passStateToCanvas
 
-    -- handle my movement:
+    -- control my movement:
     HandleKeyDown _sid ev -> do
       case KE.key ev of
         "ArrowLeft"  -> handleMoveBy (MPt.setAccelX (- speedIncrement))
@@ -417,6 +419,7 @@ rootComponent =
       let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
       H.modify_ $ updateGameState $ _ { playersData = playersData2 }
 
+      -- check whether "it" disappeared and if so, reassign it: 
       case m_myPlayer of
         Nothing -> pure unit
         Just myPlayer -> do
