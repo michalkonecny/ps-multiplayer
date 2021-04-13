@@ -23,7 +23,7 @@ import Data.Int as Int
 import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
 import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))
@@ -38,7 +38,6 @@ import Effect.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
 import EitherHelpers (mapLeft, (<|||>))
-import Graphics.Canvas (TextAlign(..))
 import Graphics.Canvas as Canvas
 import Halogen (liftEffect)
 import Halogen as H
@@ -51,8 +50,7 @@ import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
 import Lobby (Output(..), Player)
 import Lobby as Lobby
-import Math (pi)
-import MovingBall (MovingBall, ballsAreColliding, drawBall)
+import MovingBall (MovingBall, ballBounceOffBall, drawBall)
 import MovingPoint (MovingPoint, constrainLocation)
 import MovingPoint as MPt
 import WSListener (setupWSListener)
@@ -143,13 +141,14 @@ initialGameState =
   , playersData: Map.empty
   }
 
-getCollision :: Player -> MovingBall -> PlayersData -> Maybe Player
-getCollision player1 movingName1 playersData =
-  map getPlayer $ find isColliding $ 
-    (Map.toUnfoldable $ Map.filterKeys (_ /= player1) playersData :: List _)
+getCollision :: Player -> MovingBall -> PlayersData -> Maybe (Tuple Player MovingBall)
+getCollision player1 movingBall1 playersData =
+  removeJust $ find (\(Tuple _ m) -> isJust m) $ 
+    (Map.toUnfoldable $ map (\{movingBall} -> ballBounceOffBall movingBall movingBall1) $ 
+      Map.filterKeys (_ /= player1) playersData :: List _)
   where
-  isColliding (Tuple _ {movingBall}) = ballsAreColliding movingName1 movingBall
-  getPlayer (Tuple player _) = player
+  removeJust (Just (Tuple p (Just mb))) = Just (Tuple p mb)
+  removeJust _ = Nothing
 
 data Action =
     HandleLobby Lobby.Output
@@ -420,14 +419,21 @@ rootComponent =
             H.modify_ $ updateGameState $ \st -> 
               st { playersData = Map.insert myPlayer {movingBall: newMovingBall, time} st.playersData }
             passStateToCanvas
+
             -- send new position to peers:
             liftEffect $ sendMyPos m_ws {player: myPlayer, movingBall: newMovingBall}
 
-            -- if I am it, check whether I caught someone:
-            when (myPlayer == it && itActive) do
-              case getCollision myPlayer newMovingBall playersData of
-                Nothing -> pure unit
-                Just player -> do
+            -- check for a collision:
+            case getCollision myPlayer newMovingBall playersData of
+              Nothing -> pure unit
+              Just (Tuple player newMovingBall2) -> do -- collision occurred, bounced off another player
+                  -- change my movement due to the bounce:
+                  H.modify_ $ updateGameState $ \st -> 
+                    st { playersData = Map.insert myPlayer {movingBall: newMovingBall2, time} st.playersData }
+                  passStateToCanvas
+
+                -- if I am it, tig them!
+                  when (myPlayer == it && itActive) do
                     -- gotcha! update it locally:
                     H.modify_ $ updateGameState $ _ { it = player }
                     passStateToCanvas
