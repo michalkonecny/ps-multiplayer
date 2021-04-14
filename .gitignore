@@ -9,5 +9,4 @@
 /.psa*
 /.spago
 /index.js
-package.json
 package-lock.json
