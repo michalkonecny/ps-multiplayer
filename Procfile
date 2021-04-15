@@ -1,1 +1,1 @@
-web: node ws-broadcast.js $PORT
+web: npm start
