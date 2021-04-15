@@ -29,11 +29,11 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import Web.HTML (window)
+import Web.HTML.Location (hostname, port)
+import Web.HTML.Window (location)
 import Web.Socket.ReadyState as ReadyState
 import Web.Socket.WebSocket as WS
-
-defaultWSURL :: String
-defaultWSURL = "ws://localhost:3000"
 
 type Player = Int
 
@@ -70,14 +70,16 @@ type SelectingPlayerState = {
 }
 
 type ConnectingState = {  
-  maybeMsg :: Maybe String
+  urlInput :: String
+, maybeMsg :: Maybe String
 }
 
 initialState :: State
-initialState = Connecting { maybeMsg: Nothing }
+initialState = Connecting { urlInput: "ws://localhost:3000", maybeMsg: Nothing }
 
 data Action =
-    SetWSURL String
+    Init
+  | SetWSURL String
   | SetValue Key Value
   | SelectPlayer Player Values
 
@@ -99,10 +101,10 @@ component valuesSpec =
       -- { handleAction = handleAction, initialize = Just Init }
       { handleAction = handleAction
       , handleQuery = handleQuery
-      , initialize = Just (SetWSURL defaultWSURL) }
+      , initialize = Just Init }
     }
   where
-  render (Connecting {maybeMsg}) =
+  render (Connecting {urlInput, maybeMsg}) =
     HH.div [] [ enterWSURL ]
     where
     enterWSURL = do
@@ -111,7 +113,7 @@ component valuesSpec =
           ae$ HH.span_ $ sb do
             ae$ HH.text "Enter broadcast server web-socket URL: ws://"
             ae$ HH.input $ sb do
-              ae$ HP.value (String.drop 5 defaultWSURL)
+              ae$ HP.value (String.drop 5 urlInput)
               ae$ HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _))
         ae$ HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]
   render (SelectingPlayer {values, players}) = 
@@ -165,13 +167,17 @@ component valuesSpec =
     pure Nothing
 
   handleAction = case _ of
+    Init -> do
+      wsURL <- liftEffect getWSURL
+      handleAction $ SetWSURL wsURL
     SetWSURL wsURL -> do
       ws <- liftEffect $ WS.create wsURL []
       liftAff $ Aff.delay (Aff.Milliseconds 100.0) -- allow ws to initialise
       rs <- liftEffect $ WS.readyState ws
       if rs /= ReadyState.Open
         then do
-          H.modify_ $ updateConnecting $ \st -> st { maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
+          H.modify_ $ updateConnecting $ \st -> 
+            st { urlInput = wsURL, maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
           H.raise (Connected ws)
           H.put $ SelectingPlayer { values: defaultValues, players: Map.empty }
@@ -181,6 +187,11 @@ component valuesSpec =
     SelectPlayer player shape -> do
       H.raise (SelectedPlayer player shape)
 
+  getWSURL = do
+    loc <- location =<< window
+    host <- hostname loc
+    p <- port loc
+    pure $ "ws://" <> host <> ":" <> p
   defaultValues = Map.fromFoldable $ map getDefault valuesSpec
     where
     getDefault {key,default} = Tuple key default
