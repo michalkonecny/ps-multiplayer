@@ -1,7 +1,7 @@
 // based on code from https://github.com/websockets/ws#server-broadcast
 const WebSocket = require('ws');
 
-const WEB_SOCKET_PORT = 3000;
+const WEB_SOCKET_PORT = process.argv[2];
 
 const wss = new WebSocket.Server({ port: WEB_SOCKET_PORT });
 
