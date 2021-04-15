@@ -3,6 +3,6 @@
     "ws": "^7.4.4"
   },
   "scripts": {
-    "start": "node ws-broadcast.js 80"
+    "start": "node ws-broadcast.js 8080"
   }
 }
