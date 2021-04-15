@@ -1,8 +1,14 @@
 {
+  "engines": {
+    "node": "15.2.x"
+  },  
   "dependencies": {
+    "bufferutil": "^4.0.3",
+    "express": "^4.17.1",
+    "utf-8-validate": "^5.0.4",
     "ws": "^7.4.4"
   },
   "scripts": {
-    "start": "node ws-broadcast.js 8080"
+    "start": "node ws-broadcast-express.js"
   }
 }
