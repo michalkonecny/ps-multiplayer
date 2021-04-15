@@ -6,7 +6,8 @@ const { Server } = require('ws');
 const PORT = process.env.PORT || 3000;
 
 const server = express()
-.use(express.static('.'))
+.use(express.static('public'))
+.use((req, res) => res.sendFile('public/index.html', { root: __dirname + '/public' }))
 .listen(PORT, () => console.log(`Express listening on ${PORT}`));
 
 const wss = new Server({ server });
@@ -23,5 +24,5 @@ wss.on('connection', function connection(ws) {
   });
 });
 
-console.log("WebSocket broadcast server configured.");
+console.log("WebSocket broadcast server configured on " + wss);
 
