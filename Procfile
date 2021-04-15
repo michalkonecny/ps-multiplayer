@@ -1,1 +1,1 @@
-ws: node ws-broadcast
+web: node ws-broadcast.js $PORT
