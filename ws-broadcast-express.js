@@ -6,8 +6,8 @@ const { Server } = require('ws');
 const PORT = process.env.PORT || 3000;
 
 const server = express()
-.use(express.static('public'))
-.use((req, res) => res.sendFile('public/index.html', { root: __dirname + '/public' }))
+.get('/', (req,res) => res.sendFile(__dirname + '/tigGame.html'))
+.get('/index.js', (req,res) => res.sendFile(__dirname + '/index.js'))
 .listen(PORT, () => console.log(`Express listening on ${PORT}`));
 
 const wss = new Server({ server });
