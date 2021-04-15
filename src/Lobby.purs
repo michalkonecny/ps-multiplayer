@@ -191,7 +191,8 @@ component valuesSpec =
     loc <- location =<< window
     host <- hostname loc
     p <- port loc
-    pure $ "ws://" <> host <> ":" <> p
+    let prot = if host == "localhost" then "ws://" else "wss://"
+    pure $ prot <> host <> ":" <> p
   defaultValues = Map.fromFoldable $ map getDefault valuesSpec
     where
     getDefault {key,default} = Tuple key default

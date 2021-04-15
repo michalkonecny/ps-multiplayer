@@ -13105,10 +13105,10 @@ var PS = {};
           if (v instanceof Connecting) {
               var enterWSURL = Halogen_HTML_Elements.div_(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.div_(Control_SequenceBuildMonad.sb(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.span_(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Core.text("Enter broadcast server web-socket URL: ws://")))(function () {
                   return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.input(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Properties.value(Data_String_CodePoints.drop(5)(v.value0.urlInput))))(function () {
-                      return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Events.onValueChange(function ($50) {
+                      return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Events.onValueChange(function ($51) {
                           return Data_Maybe.Just.create(SetWSURL.create((function (v1) {
                               return "ws://" + v1;
-                          })($50)));
+                          })($51)));
                       }));
                   }))));
               }))))))))(function () {
@@ -13138,9 +13138,9 @@ var PS = {};
                           return Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.td_(Control_SequenceBuildMonad.sb(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.input(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Properties.value(Data_Maybe.fromMaybe("")(Data_Map_Internal.lookup(Data_Ord.ordString)(v1.key)(v.value0.values)))))(function () {
                               return Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Properties.attr("size")(Data_Show.show(Data_Show.showInt)(v1.maxLength))))(function () {
                                   return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Events.onValueInput((function () {
-                                      var $51 = SetValue.create(v1.key);
-                                      return function ($52) {
-                                          return Data_Maybe.Just.create($51($52));
+                                      var $52 = SetValue.create(v1.key);
+                                      return function ($53) {
+                                          return Data_Maybe.Just.create($52($53));
                                       };
                                   })()));
                               });
@@ -13194,7 +13194,14 @@ var PS = {};
           var loc = Control_Bind.bindFlipped(Effect.bindEffect)(Web_HTML_Window.location)(Web_HTML.window)();
           var host = Web_HTML_Location.hostname(loc)();
           var p = Web_HTML_Location.port(loc)();
-          return "ws://" + (host + (":" + p));
+          var prot = (function () {
+              var $40 = host === "localhost";
+              if ($40) {
+                  return "ws://";
+              };
+              return "wss://";
+          })();
+          return prot + (host + (":" + p));
       };
       var defaultValues = (function () {
           var getDefault = function (v) {
@@ -13212,8 +13219,8 @@ var PS = {};
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Web_Socket_WebSocket.create(v.value0)([  ])))(function (ws) {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(100.0)))(function () {
                       return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Web_Socket_WebSocket.readyState(ws)))(function (rs) {
-                          var $44 = Data_Eq.notEq(Web_Socket_ReadyState.eqReadyState)(rs)(Web_Socket_ReadyState.Open.value);
-                          if ($44) {
+                          var $45 = Data_Eq.notEq(Web_Socket_ReadyState.eqReadyState)(rs)(Web_Socket_ReadyState.Open.value);
+                          if ($45) {
                               return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateConnecting(function (st) {
                                   return {
                                       urlInput: v.value0,
