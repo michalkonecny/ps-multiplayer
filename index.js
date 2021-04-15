@@ -13195,11 +13195,11 @@ var PS = {};
           var host = Web_HTML_Location.hostname(loc)();
           var p = Web_HTML_Location.port(loc)();
           var prot = (function () {
-              var $40 = host === "localhost";
+              var $40 = host === "game-ws-broadcast.heroku.com";
               if ($40) {
-                  return "ws://";
+                  return "wss://";
               };
-              return "wss://";
+              return "ws://";
           })();
           return prot + (host + (":" + p));
       };

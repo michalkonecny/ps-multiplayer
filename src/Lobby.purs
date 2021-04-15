@@ -191,7 +191,7 @@ component valuesSpec =
     loc <- location =<< window
     host <- hostname loc
     p <- port loc
-    let prot = if host == "localhost" then "ws://" else "wss://"
+    let prot = if host == "game-ws-broadcast.heroku.com" then "wss://" else "ws://"
     pure $ prot <> host <> ":" <> p
   defaultValues = Map.fromFoldable $ map getDefault valuesSpec
     where
