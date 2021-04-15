@@ -1,9 +1,8 @@
 {
   "dependencies": {
-    "purescript": "^0.13.8",
     "ws": "^7.4.4"
   },
   "scripts": {
-    "start": "node ws-broadcast"
+    "start": "node ws-broadcast.js"
   }
 }
