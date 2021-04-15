@@ -1,15 +1,13 @@
 'use strict';
 
-import express from 'express';
-import ws_pkg from 'ws';
-const { Server } = ws_pkg;
+const express = require('express');
+const { Server } = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const INDEX = '/tigGame.html';
 
 const server = express()
-  .use((req, res) => res.sendFile(INDEX, { root: __dirname }))
-  .listen(PORT, () => console.log(`Express listening on ${PORT}`));
+.use(express.static('.'))
+.listen(PORT, () => console.log(`Express listening on ${PORT}`));
 
 const wss = new Server({ server });
 
