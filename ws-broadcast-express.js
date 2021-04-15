@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { Server } = require('ws');
+const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3000;
 
@@ -10,7 +10,7 @@ const server = express()
 .get('/index.js', (req,res) => res.sendFile(__dirname + '/index.js'))
 .listen(PORT, () => console.log(`Express listening on ${PORT}`));
 
-const wss = new Server({ server });
+const wss = new WebSocket.Server({ server });
 
 wss.on('connection', function connection(ws) {
   ws.on('message', function incoming(data) {
