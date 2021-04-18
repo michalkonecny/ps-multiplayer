@@ -31,9 +31,9 @@ import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
-import Effect.Aff (Aff, Milliseconds(..))
+import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff as Aff
-import Effect.Aff.Class (class MonadAff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
@@ -137,7 +137,7 @@ type GameState = {
 initialGameState :: GameState
 initialGameState =  
   { it: 0
-  , itActive: false
+  , itActive: true
   , playersData: Map.empty
   }
 
@@ -344,6 +344,13 @@ rootComponent =
 
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
+      {m_myPlayer} <- H.get
+      pure unit
+      case m_myPlayer of
+        Just myPlayer | it == myPlayer -> do
+          liftAff $ delay (Milliseconds 1000.0) -- 1 second
+          H.modify_ $ updateGameState $ _ { itActive = true }
+        _ -> pure unit
       -- passStateToCanvas
 
     -- control my movement:
@@ -439,11 +446,6 @@ rootComponent =
                     passStateToCanvas
                     -- and announce new "it":
                     liftEffect $ sendIt m_ws player
-            -- if I am it but inactive, check whether I should become active:
-            when (myPlayer == it && not itActive && (isNothing $ getCollision myPlayer newMovingBall playersData)) do
-              -- not touching anyone any more, should become active now!
-              H.modify_ $ updateGameState $ _ { itActive = true }
-              passStateToCanvas
 
 -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
 pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
