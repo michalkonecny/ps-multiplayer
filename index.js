@@ -13212,7 +13212,9 @@ var PS = {};
       var handleAction = function (v) {
           if (v instanceof Init) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(getWSURL))(function (wsURL) {
-                  return handleAction(new SetWSURL(wsURL));
+                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(500.0)))(function () {
+                      return handleAction(new SetWSURL(wsURL));
+                  });
               });
           };
           if (v instanceof SetWSURL) {
@@ -13249,7 +13251,7 @@ var PS = {};
           if (v instanceof SelectPlayer) {
               return Halogen_Query_HalogenM.raise(new SelectedPlayer(v.value0, v.value1));
           };
-          throw new Error("Failed pattern match at Lobby (line 169, column 18 - line 188, column 44): " + [ v.constructor.name ]);
+          throw new Error("Failed pattern match at Lobby (line 169, column 18 - line 189, column 44): " + [ v.constructor.name ]);
       };
       return Halogen_Component.mkComponent({
           initialState: function (a) {

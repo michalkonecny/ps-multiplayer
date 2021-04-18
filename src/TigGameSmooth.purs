@@ -23,7 +23,7 @@ import Data.Int as Int
 import Data.List.Lazy (List, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isJust, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))

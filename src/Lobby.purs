@@ -169,6 +169,7 @@ component valuesSpec =
   handleAction = case _ of
     Init -> do
       wsURL <- liftEffect getWSURL
+      liftAff $ Aff.delay (Aff.Milliseconds 500.0)
       handleAction $ SetWSURL wsURL
     SetWSURL wsURL -> do
       ws <- liftEffect $ WS.create wsURL []
