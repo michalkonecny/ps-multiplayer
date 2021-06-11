@@ -12,34 +12,47 @@ import Purlay.MovingPoint (MovingPoint)
   so that the different game object types can have different instances of
   classes such as Drawable.
 -}
-class IsGameObject t a | t -> a where
-  gameObjectRecord :: t -> GameObjectRecord a
+class IsGameObject go where
+  gameObjectRecord :: go -> GameObjectRecord
   {-| Working with game objects using their GameObjectRecords: Unary function in an applicative functor -}
-  updateGameObjectRecordF :: forall f. Applicative f => (GameObjectRecord a -> f (GameObjectRecord a)) -> (t -> f t)
+  updateGameObjectRecordF :: forall f. Applicative f => (GameObjectRecord -> f GameObjectRecord) -> (go -> f go)
+
+{-
+  Existential type inspired by https://thimoteus.github.io/posts/2018-09-21-existential-types.html
+-}
+newtype AnyGameObject = AnyGameObject (forall r. (forall go. IsGameObject go => go -> r) -> r)
+
+anyGameObject :: forall go . IsGameObject go => go -> AnyGameObject
+anyGameObject go = AnyGameObject (_ $ go)
+
+instance isGameObjectAnyGameObject :: IsGameObject AnyGameObject where
+  gameObjectRecord (AnyGameObject withGO) = withGO gameObjectRecord
+  updateGameObjectRecordF fn (AnyGameObject withGO) =
+    withGO (map anyGameObject <<< updateGameObjectRecordF fn)
 
 {-| Working with game objects using their GameObjectRecords: Unary function -}
 updateGameObjectRecord :: 
-  forall t a. (IsGameObject t a) =>
-  (GameObjectRecord a -> GameObjectRecord a) -> (t -> t)
+  forall go. (IsGameObject go) =>
+  (GameObjectRecord -> GameObjectRecord) -> (go -> go)
 updateGameObjectRecord f go =
   updateGameObjectRecordF (\r unit -> f r) go unit -- using the dummy applicative functor (Unit ->)
 
 updateXYState ::
-  forall t a. (IsGameObject t a) =>
-  (GameObjectRecord a -> MovingPoint) -> (t -> t)
+  forall go. (IsGameObject go) =>
+  (GameObjectRecord -> MovingPoint) -> (go -> go)
 updateXYState f =
   updateGameObjectRecord (\r -> r {xyState = f r})
 
 {-| Working with game objects using their GameObjectRecords: Binary function with result of another type -}
 useGameObjects ::
-  forall go1 go2 a1 a2 t. IsGameObject go1 a1 => IsGameObject go2 a2 => 
-  (GameObjectRecord a1 -> GameObjectRecord a2 -> t) ->
+  forall go1 go2 t. IsGameObject go1 => IsGameObject go2 => 
+  (GameObjectRecord -> GameObjectRecord -> t) ->
   go1 -> go2 -> t 
 useGameObjects f go1 go2 =
   f (gameObjectRecord go1) (gameObjectRecord go2)
 
 isTouching :: 
-  forall go1 go2 a1 a2. IsGameObject go1 a1 => IsGameObject go2 a2 => 
+  forall go1 go2. IsGameObject go1 => IsGameObject go2 => 
   go1 -> go2 -> Boolean
 isTouching = 
   useGameObjects \ 
@@ -51,7 +64,7 @@ isTouching =
 
 {-| Apply a function to a game object's xyState, in coordinates relative to the xyState of another object. -}
 relativeTo :: 
-  forall go0 a0 go a f. Applicative f => IsGameObject go0 a0 => IsGameObject go a => 
+  forall go0 go f. Applicative f => IsGameObject go0 => IsGameObject go => 
   go0 -> (go -> f go) -> go -> f go
 relativeTo go0 = aux (gameObjectRecord go0)
   where
@@ -66,7 +79,7 @@ relativeTo go0 = aux (gameObjectRecord go0)
       o{ xyState = xyState {pos = {x: x+x0, y: y+y0}, velo = {x: dx+dx0, y: dy+dy0}} }
 
 bounceOff :: 
-  forall go0 a0 go a. IsGameObject go0 a0 => IsGameObject go a => 
+  forall go0 go. IsGameObject go0 => IsGameObject go => 
   go0 -> go -> Maybe go
 bounceOff otherObj obj = aux (gameObjectRecord otherObj) (gameObjectRecord obj)
   where

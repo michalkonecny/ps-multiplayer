@@ -6,14 +6,13 @@ import Data.Argonaut (class DecodeJson, class EncodeJson, JsonDecodeError(..), d
 import Data.Either (Either(..))
 import Purlay.MovingPoint (MovingPoint)
   
-type GameObjectRecord a = 
+type GameObjectRecord = 
   {
     shape :: Shape
   , consistency :: Consistency
   , scaling :: Number
   , xyState :: MovingPoint
   , angleState :: MovingAngle
-  | a
   }
 
 type MovingAngle = { angle :: Number, velo :: Number, accell :: Number }

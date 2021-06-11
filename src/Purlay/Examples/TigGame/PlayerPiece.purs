@@ -22,7 +22,8 @@ import Purlay.GameObject (class IsGameObject)
 import Purlay.GameObjectRecord (Consistency(..), GameObjectRecord, Shape(..), initMovingAngle)
 import Purlay.MovingPoint (MovingPoint)
 
-newtype PlayerPiece = PlayerPiece (GameObjectRecord ( name :: String ))
+newtype PlayerPiece = 
+  PlayerPiece { gameObjectRecord :: GameObjectRecord, name :: String }
 
 derive instance eqPlayerPiece :: Eq PlayerPiece
 
@@ -35,24 +36,28 @@ instance decodeJsonPlayerPiece :: DecodeJson PlayerPiece where
       Right r  -> Right $ PlayerPiece r
       Left err -> Left err
 
-instance isGameObjectPlayerPiece :: IsGameObject PlayerPiece (name :: String) where
-  gameObjectRecord (PlayerPiece r) = r
-  updateGameObjectRecordF f (PlayerPiece r) = map PlayerPiece (f r)
+instance isGameObjectPlayerPiece :: IsGameObject PlayerPiece where
+  gameObjectRecord (PlayerPiece {gameObjectRecord:r}) = r
+  updateGameObjectRecordF f (PlayerPiece pp@{gameObjectRecord:r}) = 
+    map (PlayerPiece <<< pp {gameObjectRecord = _}) $ f r
 
 newPlayerPiece :: { name :: String, xyState :: MovingPoint, radius :: Number } -> PlayerPiece
 newPlayerPiece { name, xyState, radius } = 
   PlayerPiece
   {
-    shape: Ball { radius }
-  , consistency: Solid
-  , scaling: 1.0
-  , xyState
-  , angleState: initMovingAngle
+    gameObjectRecord: 
+      {
+        shape: Ball { radius }
+      , consistency: Solid
+      , scaling: 1.0
+      , xyState
+      , angleState: initMovingAngle
+      }
   , name
   }
 
 instance drawablePlayerPiece :: Drawable PlayerPiece where
-  draw (PlayerPiece {shape: Ball{radius}, xyState: {pos: {x,y}}, name}) {context, style} =  
+  draw (PlayerPiece {gameObjectRecord: {shape: Ball{radius}, xyState: {pos: {x,y}}}, name}) {context, style} =  
     do
     Canvas.setFillStyle context style
     Canvas.fillPath context $ Canvas.arc context 
