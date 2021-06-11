@@ -1,5 +1,5 @@
 {-|
-    Module      :  EitherHelpers
+    Module      :  Purlay.EitherHelpers
     Description :  Utilities for Either values
     Copyright   :  (c) Michal Konecny 2021
     License     :  BSD3
@@ -10,7 +10,7 @@
 
    Utilities for Either values
 -}
-module EitherHelpers where
+module Purlay.EitherHelpers where
 
 import Prelude
 
