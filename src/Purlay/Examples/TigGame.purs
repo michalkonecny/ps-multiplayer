@@ -10,7 +10,7 @@
 
    A simple multiplayer game of tig
 -}
-module TigGameSmooth(mainTigGame) where
+module Purlay.Examples.TigGame(mainTigGame) where
 
 import Prelude
 
@@ -48,11 +48,13 @@ import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
-import Lobby (Output(..), Player)
-import Lobby as Lobby
-import MovingBall (MovingBall, ballBounceOffBall, drawBall)
-import MovingPoint (MovingPoint, constrainLocation)
-import MovingPoint as MPt
+import Purlay.Drawable (draw)
+import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece(..), newPlayerPiece)
+import Purlay.GameObject (bounceOff, updateXYState)
+import Purlay.Lobby (Output(..), Player)
+import Purlay.Lobby as Lobby
+import Purlay.MovingPoint (MovingPoint)
+import Purlay.MovingPoint as MPt
 import WSListener (setupWSListener)
 import Web.HTML (window) as Web
 import Web.HTML.HTMLDocument as HTMLDocument
@@ -62,6 +64,7 @@ import Web.Socket.WebSocket as WS
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
+
 
 mainTigGame :: Effect Unit
 mainTigGame = do
@@ -99,7 +102,7 @@ defaultName = "😷"
 
 initialMPt :: Player -> MovingPoint
 initialMPt player = 
-  constrainLocation maxX maxY $
+  MPt.constrainPosWrapAround { minX: 0.0, maxX, minY: 0.0, maxY } $
   { pos:
     { x: playerN*107.0, 
       y: playerN*107.0 }
@@ -125,8 +128,8 @@ initialState =
   , gameState: initialGameState
   }
 
-type MovingBallTime = { movingBall :: MovingBall, time :: Instant }
-type PlayersData = Map Player MovingBallTime
+type PlayerPieceTime = { playerPiece :: PlayerPiece, time :: Instant }
+type PlayersData = Map Player PlayerPieceTime
 
 type GameState = {
   it :: Player
@@ -141,10 +144,10 @@ initialGameState =
   , playersData: Map.empty
   }
 
-getCollision :: Player -> MovingBall -> PlayersData -> Maybe (Tuple Player MovingBall)
-getCollision player1 movingBall1 playersData =
+getCollision :: Player -> PlayerPiece -> PlayersData -> Maybe (Tuple Player PlayerPiece)
+getCollision player1 playerPiece1 playersData =
   removeJust $ find (\(Tuple _ m) -> isJust m) $ 
-    (Map.toUnfoldable $ map (\{movingBall} -> ballBounceOffBall movingBall movingBall1) $ 
+    (Map.toUnfoldable $ map (\{playerPiece} -> bounceOff playerPiece playerPiece1) $ 
       Map.filterKeys (_ /= player1) playersData :: List _)
   where
   removeJust (Just (Tuple p (Just mb))) = Just (Tuple p mb)
@@ -153,14 +156,14 @@ getCollision player1 movingBall1 playersData =
 data Action =
     HandleLobby Lobby.Output
   | ReceiveMessageFromPeer String
-  | SetPlayer Player MovingBall
+  | SetPlayer Player PlayerPiece
   | SetIt Player
   | HandleKeyDown H.SubscriptionId KeyboardEvent
   | HandleKeyUp H.SubscriptionId KeyboardEvent
   | Pulse
 
 -- message types:
-type MovingPlayer = { player :: Player, movingBall :: MovingBall }
+type MovingPlayer = { player :: Player, playerPiece :: PlayerPiece }
 type It = { it :: Player }
 
 sendMyPos :: Maybe WebSocket -> MovingPlayer -> Effect Unit
@@ -179,8 +182,8 @@ messageToAction msg = do
   (parseSetPlayer json <|||> parseSetIt json) # describeErrs "Failed to decode JSON:\n"
   where
   parseSetPlayer json = do
-    ({player, movingBall} :: MovingPlayer) <- decodeJson json
-    pure (SetPlayer player movingBall)
+    ({player, playerPiece} :: MovingPlayer) <- decodeJson json
+    pure (SetPlayer player playerPiece)
   parseSetIt json = do
     ({it} :: It) <- decodeJson json
     pure (SetIt it)
@@ -250,8 +253,8 @@ canvasComponent myPlayer =
         drawBoard = do
           Canvas.setFillStyle context "lightgoldenrodyellow"
           Canvas.fillRect context { x: 0.0, y: 0.0, width: maxX, height: maxY }
-        drawPlayer (Tuple player {movingBall}) = 
-            drawBall context playerStyle movingBall
+        drawPlayer (Tuple player {playerPiece}) = 
+            draw playerPiece {context, style: playerStyle}
             where
             playerStyle 
               | is_it = "lightcoral"
@@ -302,12 +305,12 @@ rootComponent =
     HandleLobby (SelectedPlayer player values) -> do
       -- set my player to the state:
       let name = fromMaybe "?" $ Map.lookup "name" values
-      let movingBall = { center: initialMPt player, name, radius: playerRadius }
+      let playerPiece = newPlayerPiece { xyState: initialMPt player, name, radius: playerRadius }
       time <- liftEffect now
       H.modify_ $ 
         _ { m_myPlayer = Just player
           , gameState = 
-            initialGameState { playersData = Map.singleton player {movingBall, time} } }
+            initialGameState { playersData = Map.singleton player {playerPiece, time} } }
       -- force a Pulse now to sync with others asap:
       handleAction Pulse
 
@@ -330,17 +333,17 @@ rootComponent =
         Left err -> liftEffect $ log err
         Right action -> handleAction action
 
-    SetPlayer player movingBall -> do
+    SetPlayer player playerPiece@(PlayerPiece r) -> do
       -- get current time:
       time <- liftEffect now
 
       -- update state:
       H.modify_ $ updateGameState $ \ st -> 
-        st { playersData = Map.insert player {movingBall, time} st.playersData }
+        st { playersData = Map.insert player {playerPiece, time} st.playersData }
       passStateToCanvas      
 
       -- let the lobby know of this player:
-      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "name" movingBall.name))
+      void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "name" r.name))
 
     SetIt it -> do
       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
@@ -391,10 +394,10 @@ rootComponent =
         Nothing -> pure unit
         Just myPlayer -> do
           -- let others know we are still alive:
-          handleMoveBy $ 
-            MPt.move slowDownRatio
-            >>> MPt.constrainSpeed maxSpeed 
-            >>> MPt.constrainLocation maxX maxY
+          handleMoveBy $
+            MPt.move {slowDownRatio}
+            >>> MPt.constrainSpeed {maxSpeed} 
+            >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
           
           -- check whether "it" exists
           let itGone = not $ Map.member it playersData2
@@ -419,24 +422,24 @@ rootComponent =
       Just myPlayer -> do
         case Map.lookup myPlayer playersData of
           Nothing -> pure unit
-          Just {movingBall} -> do
+          Just {playerPiece} -> do
             -- make the move locally:
-            let newMovingBall = movingBall { center = moveCenter movingBall.center }
+            let newPlayerPiece = updateXYState (\r -> moveCenter r.xyState) playerPiece
             time <- liftEffect now
             H.modify_ $ updateGameState $ \st -> 
-              st { playersData = Map.insert myPlayer {movingBall: newMovingBall, time} st.playersData }
+              st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece, time} st.playersData }
             passStateToCanvas
 
             -- send new position to peers:
-            liftEffect $ sendMyPos m_ws {player: myPlayer, movingBall: newMovingBall}
+            liftEffect $ sendMyPos m_ws {player: myPlayer, playerPiece: newPlayerPiece}
 
             -- check for a collision:
-            case getCollision myPlayer newMovingBall playersData of
+            case getCollision myPlayer newPlayerPiece playersData of
               Nothing -> pure unit
-              Just (Tuple player newMovingBall2) -> do -- collision occurred, bounced off another player
+              Just (Tuple player newPlayerPiece2) -> do -- collision occurred, bounced off another player
                   -- change my movement due to the bounce:
                   H.modify_ $ updateGameState $ \st -> 
-                    st { playersData = Map.insert myPlayer {movingBall: newMovingBall2, time} st.playersData }
+                    st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece2, time} st.playersData }
                   passStateToCanvas
 
                 -- if I am it, tig them!

@@ -4,6 +4,7 @@
   },
   "dependencies": {
     "bufferutil": "^4.0.3",
+    "expres": "^0.0.5",
     "express": "^4.17.1",
     "utf-8-validate": "^5.0.4",
     "ws": "^7.4.4"
