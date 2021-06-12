@@ -5,7 +5,7 @@ import Prelude
 import Data.Argonaut (class EncodeJson, encodeJson)
 import Data.Maybe (Maybe(..))
 import Purlay.GameObjectRecord (Consistency(..), GameObjectRecord, Shape(..))
-import Purlay.JsonHelpers (class DecodeJsonWithSample, decodeJsonWithSample)
+import Purlay.JsonHelpers (class DecodeJsonWithSample, class Jsonable, decodeJsonWithSample)
 import Purlay.MovingPoint (MovingPoint)
 
 {-|  A game objects has to contain a GameObjectRecord. 
@@ -14,7 +14,7 @@ import Purlay.MovingPoint (MovingPoint)
   so that the different game object types can have different instances of
   classes such as Drawable.
 -}
-class IsGameObject go where
+class (Jsonable go) <= IsGameObject go where
   gameObjectRecord :: go -> GameObjectRecord
   {-| Working with game objects using their GameObjectRecords: Unary function in an applicative functor -}
   updateGameObjectRecordF :: forall f. Applicative f => (GameObjectRecord -> f GameObjectRecord) -> (go -> f go)
@@ -22,15 +22,17 @@ class IsGameObject go where
 {-
   Existential type inspired by https://thimoteus.github.io/posts/2018-09-21-existential-types.html
 -}
-newtype AnyGameObject = AnyGameObject (forall r. (forall go. IsGameObject go => EncodeJson go => DecodeJsonWithSample go => go -> r) -> r)
+newtype AnyGameObject = AnyGameObject (forall r. (forall go. IsGameObject go => go -> r) -> r)
 
-anyGameObject :: forall go . IsGameObject go => EncodeJson go => DecodeJsonWithSample go => go -> AnyGameObject
+anyGameObject :: forall go . IsGameObject go => go -> AnyGameObject
 anyGameObject go = AnyGameObject (_ $ go)
 
 instance isGameObjectAnyGameObject :: IsGameObject AnyGameObject where
   gameObjectRecord (AnyGameObject passGO) = passGO gameObjectRecord
   updateGameObjectRecordF fn (AnyGameObject passGO) =
     passGO (map anyGameObject <<< updateGameObjectRecordF fn)
+
+instance jsonableAnyGameObject :: Jsonable AnyGameObject
 
 instance encodeJsonAnyGameObject :: EncodeJson AnyGameObject where
     encodeJson (AnyGameObject passGO) = passGO encodeJson
