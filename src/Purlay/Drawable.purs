@@ -4,13 +4,8 @@ import Prelude
 
 import Effect (Effect)
 import Graphics.Canvas as Canvas
+import Purlay.Coordinator (PeerId)
   
-class Drawable t where
-  draw :: t -> DrawParams -> Effect Unit
-
-type DrawParams =
-  {
-    context :: Canvas.Context2D
-  , style :: String
-  }
+class Drawable gstate t | t -> gstate where
+  draw :: { context :: Canvas.Context2D, peerId :: PeerId, gstate :: gstate } -> t -> Effect Unit
 

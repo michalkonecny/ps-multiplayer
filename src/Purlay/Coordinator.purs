@@ -1,216 +1,178 @@
-{-|
-    Module      :  TigGameSmooth
-    Description :  A simple multiplayer game of tig
-    Copyright   :  (c) Michal Konecny 2021
-    License     :  BSD3
-
-    Maintainer  :  mikkonecny@gmail.com
-    Stability   :  experimental
-    Portability :  portable
-
-   A simple multiplayer game of tig
--}
-module Purlay.Examples.TigGame
--- (mainTigGame) 
-where
+module Purlay.Coordinator where
 
 import Prelude
 
 import Control.Monad.Rec.Class (forever)
-import Control.SequenceBuildMonad (ae, sb)
-import Data.Argonaut (class DecodeJson, class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
-import Data.DateTime.Instant (Instant, unInstant)
-import Data.Either (Either(..), hush)
-import Data.Int as Int
-import Data.List (List, find)
-import Data.List as List
-import Data.Map (Map)
+import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, printJsonDecodeError)
+import Data.Array as Array
+import Data.DateTime.Instant (Instant)
+import Data.Either (Either)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Set as Set
+import Data.Maybe (Maybe(..))
 import Data.String as String
 import Data.Symbol (SProxy(..))
-import Data.Traversable (sequence, traverse_)
-import Data.Tuple (Tuple(..))
-import Data.Tuple.Nested ((/\))
-import Effect (Effect)
-import Effect.Aff (Aff, Milliseconds(..), delay)
+import Effect.Aff (Milliseconds(..), Aff)
 import Effect.Aff as Aff
-import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Console (log)
+import Effect.Aff.Class (class MonadAff)
 import Effect.Exception (error)
-import Effect.Now (now)
-import Halogen (liftEffect)
+import Purlay.EitherHelpers (mapLeft, (<||>), (<|||>))
 import Halogen as H
-import Halogen.Aff as HA
 import Halogen.HTML as HH
-import Halogen.HTML.Properties as HP
-import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
-import Halogen.VDom.Driver (runUI)
-import Purlay.Coordinator (PeerId)
-import Purlay.Coordinator as Coordinator
-import Purlay.Drawable (draw)
-import Purlay.EitherHelpers (mapLeft, (<|||>))
-import Purlay.Examples.TigGame.GState (GState(..), initGState)
-import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece(..), newPlayerPiece)
-import Purlay.GameCanvas as GameCanvas
-import Purlay.GameObject (anyGameObject, bounceOff, gameObjectRecord, updateXYState)
-import Purlay.JsonHelpers (class Jsonable, AnyJsonable(..), anyJsonable)
-import Purlay.Lobby (Output(..), Player)
 import Purlay.Lobby as Lobby
-import Purlay.MovingPoint (MovingPoint)
-import Purlay.MovingPoint as MPt
 import WSListener (setupWSListener)
-import Web.HTML (window) as Web
-import Web.HTML.HTMLDocument as HTMLDocument
-import Web.HTML.Window (document) as Web
 import Web.Socket.WebSocket (WebSocket)
-import Web.Socket.WebSocket as WS
-import Web.UIEvent.KeyboardEvent (KeyboardEvent)
-import Web.UIEvent.KeyboardEvent as KE
-import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
+{-
 
--- mainTigGame :: Effect Unit
--- mainTigGame = do
---   HA.runHalogenAff do
---     body <- HA.awaitBody
---     runUI rootComponent unit body
+A phantom Halogen component with the following:
+
+- state
+  - connection to a broadcasting websocket
+  - list of participating peers in "power" order (numeric ids)
+  - recent "power" measurements for all peers)
+  - leader
+
+- actions
+  - new peer
+  - remove peer
+  - change of "power" order
+  - change of object state or variable value
+
+- broadcasting to other peers
+  - change of state: list of new object states and variable values
+    - pulse = empty change of state
+  - my "power" measurement
+  - new leader (sent when another peer has shown more power for over X seconds)
+
+-}
 
 pulsePeriodMs :: Number
-pulsePeriodMs = 50.0
+pulsePeriodMs = 100.0
 
 pulseTimeoutMs :: Number
-pulseTimeoutMs = 1000.0
+pulseTimeoutMs = 2000.0
 
-maxX :: Number
-maxX = 800.0
-maxY :: Number
-maxY = 800.0
+type PeerId = Int
 
-maxSpeed :: Number
-maxSpeed = 20.0
+data Output 
+  = O_Started { my_id :: PeerId, lobby_values :: Lobby.Values }
+  | O_StateChanges (Array StateChange)
 
-slowDownRatio :: Number
-slowDownRatio = 0.9
+data Query a
+  = Q_StateChanges (Array StateChange)
 
-speedIncrement :: Number
-speedIncrement = 2.0
+type StateChange = { name :: String, value :: Json }
 
-playerRadius :: Number
-playerRadius = 25.0
-
-type Name = String
-
-defaultName :: Name
-defaultName = "😷"
-
-initialMPt :: Player -> MovingPoint
-initialMPt player = 
-  MPt.constrainPosWrapAround { minX: 0.0, maxX, minY: 0.0, maxY } $
-  { pos:
-    { x: playerN*107.0, 
-      y: playerN*107.0 }
-  , velo: { x: 0.0, y: 0.0 }
-  , accell: { x: 0.0, y: 0.0 }
-  }
-  where
-  playerN = Int.toNumber player
-
-type GameState = {
-  m_myPeer :: Maybe PeerId
--- , it :: PeerId
-, gstate :: GState
-, itActive :: Boolean
-, m_myPiece :: Maybe PlayerPiece
-, otherPieces :: PlayerPieces
--- , gobjs :: GameObjects
--- , gvars :: GVars
+type State = {
+  m_ws :: Maybe WebSocket
+, m_my_id :: Maybe PeerId
+, m_last_pulse :: Maybe Instant
+, peers :: Array PeerId
+, peers_alive :: Map.Map PeerId Instant
+, peers_power :: Map.Map PeerId PowerMeasurement
 }
 
-type PlayerPieces = Map.Map PeerId PlayerPiece
+type PowerMeasurement = Number -- the larger, the more powerful
 
-initialGameState :: GameState
-initialGameState =  { 
-  m_myPeer: Nothing
-, gstate: initGState
-, itActive: true
-, m_myPiece: Nothing
-, otherPieces: Map.empty
--- , gobjs: Map.empty
--- , gvars: Map.singleton "it" (encodeJson 0)
+i_am_leader :: State -> Boolean
+i_am_leader { m_my_id: Just id, peers } = 
+  case Array.head peers of
+    Just leader -> id == leader
+    _ -> false
+i_am_leader _ = false
+
+initialState :: State
+initialState = {
+  m_ws: Nothing
+, m_my_id: Nothing
+, m_last_pulse: Nothing
+, peers: []
+, peers_alive: Map.empty
+, peers_power: Map.empty
 }
 
 data Action
-  = HandleCoordinator Coordinator.Output
-  | SetPlayer Player PlayerPiece
-  | SetIt Player
-  | FrameTick
-  | HandleKeyDown H.SubscriptionId KeyboardEvent
-  | HandleKeyUp H.SubscriptionId KeyboardEvent
+  = HandleLobby Lobby.Output
+  | Pulse
+  | CheckPeerOrder
+  | ReceiveMessageFromPeer String
+  -- the following come from peers, via decoding the above String:
+  | NewPeerOrder (Array PeerId)
+  | NewPowerMeasurement PeerId PowerMeasurement
+  | StateChanges (Array StateChange)
 
-_coordinator :: SProxy "coordinator"
-_coordinator = SProxy
+messageToAction :: String -> Either String Action
+messageToAction msg = do
+  json <- (parseJson msg) # (describeErr "Failed to parse message as JSON: ")
+  (
+    parseStateChanges json
+    <|||> 
+    parseNewPeerOrder json 
+    <||> 
+    parseNewPowerMeasurement json 
+  ) # describeErrs "Failed to decode JSON:\n"
+  where
+  parseStateChanges json = do
+    ({changes} :: {changes :: Array StateChange}) <- decodeJson json
+    pure (StateChanges changes)
+  parseNewPeerOrder json = do
+    ({peerOrder} :: {peerOrder :: Array PeerId}) <- decodeJson json
+    pure (NewPeerOrder peerOrder)
+  parseNewPowerMeasurement json = do
+    ({peer, power} :: {peer :: PeerId, power :: PowerMeasurement}) <- decodeJson json
+    pure (NewPowerMeasurement peer power)
 
-_canvas :: SProxy "canvas"
-_canvas = SProxy
+  describeErr :: forall b.String -> Either JsonDecodeError b -> Either String b
+  describeErr s = mapLeft (\ err -> s <> (printJsonDecodeError err))
+  describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
+  describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
+
+_lobby :: SProxy "lobby"
+_lobby = SProxy
 
 type Slots = 
-  ( coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
-  , canvas      :: H.Slot (GameCanvas.Query GState) Action Int )
+  ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
 
-passStateToCanvas :: forall output.
-  H.HalogenM GameState Action Slots output Aff Unit
-passStateToCanvas = do
-  {m_myPeer, gstate, m_myPiece, otherPieces} <- H.get
-  case m_myPeer, m_myPiece of
-    Just _, Just myPiece -> do
-      let pieces = map anyGameObject $ List.Cons myPiece $ Map.values otherPieces
-      void $ H.query _canvas 1 $ H.tell (GameCanvas.Q_NewState gstate pieces)
-    _, _ -> pure unit
-
-
-rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
-rootComponent =
+component :: forall input. Lobby.ValuesSpec -> H.Component HH.HTML Query input Output Aff
+component valuesSpec =
   H.mkComponent
     { 
-      initialState: \a -> initialGameState
+      initialState: \a -> initialState
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
       { handleAction = handleAction }
     }
   where
-  render {m_myPeer: Nothing} =
-    HH.slot _coordinator 0 (Coordinator.component tigLobbySpec) unit (Just <<< HandleCoordinator)
-  render {m_myPeer: Just peerId} =
-    HH.slot _canvas 1 (GameCanvas.component {peerId, initGState, width: maxX, height: maxY}) unit Just
-
-  tigLobbySpec = sb do
-    ae$
-      { key: "name"
-      , maxLength: 5
-      , description: "Player's name"
-      , default: defaultName
-      }
+  render {m_my_id: Nothing} =
+    HH.slot _lobby 0 (Lobby.component valuesSpec) unit (Just <<< HandleLobby)
+  render {m_my_id: Just my_id} =
+    HH.text "<<Coordinator>>"
 
   handleAction = case _ of
-    -- messages from the Coordinator:
-    HandleCoordinator (Coordinator.O_Started {my_id, lobby_values}) -> do
+    -- messages from the lobby:
+    HandleLobby (Lobby.O_Connected ws) -> do
+      H.modify_ $ \st -> st { m_ws = Just ws }
+      -- start listening to the websocket:
+      void $ H.subscribe $
+        ES.EventSource.affEventSource \ emitter -> do
+          fiber <- Aff.forkAff $ do
+            setupWSListener ws (\msg -> ES.EventSource.emit emitter (ReceiveMessageFromPeer msg))
+          pure $ ES.EventSource.Finalizer do
+            Aff.killFiber (error "websocket: Event source finalized") fiber
+      -- start pulse emitter:
+      void $ H.subscribe pulseEmitter
+
+    HandleLobby (Lobby.O_SelectedPlayer peer values) -> do
       -- set my player to the state:
-      let name = fromMaybe "?" $ Map.lookup "name" lobby_values
-      let playerPiece = newPlayerPiece { peerId: my_id, xyState: initialMPt my_id, name, radius: playerRadius }
-      H.modify_ \ s ->
-        s { m_myPeer = Just my_id, m_myPiece = Just playerPiece }
+      H.modify_ $ _ { m_my_id = Just peer }
+      H.raise $ O_Started { my_id: peer, lobby_values: values }
       -- force a Pulse now to sync with others asap:
-      handleAction FrameTick
+      handleAction Pulse
 
     _ -> pure unit -- TODO
---       -- start frame ticker:
---       void $ H.subscribe frameTimer
-
 --       -- subscribe to keyboard events:
 --       document <- liftEffect $ Web.document =<< Web.window
 --       H.subscribe' \sid ->
@@ -347,22 +309,12 @@ rootComponent =
 --                     -- and announce new "it":
 --                     liftEffect $ sendIt m_ws player
 
--- -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
--- pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
--- pulseTimer = ES.EventSource.affEventSource \emitter -> do
---   fiber <- Aff.forkAff $ forever do
---     Aff.delay $ Milliseconds pulsePeriodMs
---     ES.EventSource.emit emitter Pulse
+-- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
+pulseEmitter :: forall m. MonadAff m => ES.EventSource m Action
+pulseEmitter = ES.EventSource.affEventSource \emitter -> do
+  fiber <- Aff.forkAff $ forever do
+    Aff.delay $ Milliseconds pulsePeriodMs
+    ES.EventSource.emit emitter Pulse
 
---   pure $ ES.EventSource.Finalizer do
---     Aff.killFiber (error "Event source finalized") fiber
-
-getCollision :: PeerId -> PlayerPiece -> PlayerPieces -> Maybe (Tuple PeerId PlayerPiece)
-getCollision peer1 object1 gameObjects =
-  removeJust $ find (\(Tuple _ m) -> isJust m) $ 
-    (Map.toUnfoldable $ map (\go -> bounceOff go object1) $ 
-      Map.filterKeys (_ /= peer1) gameObjects :: List _)
-  where
-  removeJust (Just (Tuple p (Just go))) = Just (Tuple p go)
-  removeJust _ = Nothing
-
+  pure $ ES.EventSource.Finalizer do
+    Aff.killFiber (error "pulseEmitter: Event source finalized") fiber

@@ -84,12 +84,12 @@ data Action =
   | SelectPlayer Player Values
 
 data Query a =
-    NewPlayer Player Values a
-  | ClearPlayers (Array Player) a
+    Q_NewPlayer Player Values a
+  | Q_ClearPlayers (Array Player) a
 
 data Output =
-    Connected WS.WebSocket
-  | SelectedPlayer Player Values
+    O_Connected WS.WebSocket
+  | O_SelectedPlayer Player Values
 
 component :: forall input. ValuesSpec -> H.Component HH.HTML Query input Output Aff
 component valuesSpec =
@@ -157,10 +157,10 @@ component valuesSpec =
           HH.td_ [HH.text $ fromMaybe "" $ Map.lookup key pvalues]
       playersArray = Map.toUnfoldable players
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
-  handleQuery (NewPlayer player values a) = do
+  handleQuery (Q_NewPlayer player values a) = do
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = Map.insert player values st.players }
     pure Nothing
-  handleQuery (ClearPlayers deadPlayers a) = do
+  handleQuery (Q_ClearPlayers deadPlayers a) = do
     liftEffect $ log $ "ClearPlayers: deadPlayers = " <> (show deadPlayers) 
     let removePlayers mp = foldl (flip Map.delete) mp deadPlayers
     H.modify_ $ updateSelectingPlayer $ \st -> st { players = removePlayers st.players }
@@ -180,13 +180,13 @@ component valuesSpec =
           H.modify_ $ updateConnecting $ \st -> 
             st { urlInput = wsURL, maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
-          H.raise (Connected ws)
+          H.raise (O_Connected ws)
           H.put $ SelectingPlayer { values: defaultValues, players: Map.empty }
 
     SetValue key value -> do
       H.modify_ $ updateSelectingPlayer $ \st -> st { values = Map.insert key value st.values }
     SelectPlayer player shape -> do
-      H.raise (SelectedPlayer player shape)
+      H.raise (O_SelectedPlayer player shape)
 
   getWSURL = do
     loc <- location =<< window

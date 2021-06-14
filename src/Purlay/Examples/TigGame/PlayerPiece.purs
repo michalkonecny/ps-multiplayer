@@ -17,15 +17,20 @@ import Data.Either (Either(..))
 import Data.Int as Int
 import Graphics.Canvas as Canvas
 import Math (pi)
+import Purlay.Coordinator (PeerId)
 import Purlay.Drawable (class Drawable)
+import Purlay.Examples.TigGame.GState (GState(..))
 import Purlay.GameObject (class IsGameObject)
 import Purlay.GameObjectRecord (Consistency(..), GameObjectRecord, Shape(..), initMovingAngle)
+import Purlay.JsonHelpers (class DecodeJsonWithSample, class Jsonable)
 import Purlay.MovingPoint (MovingPoint)
 
 newtype PlayerPiece = 
-  PlayerPiece { gameObjectRecord :: GameObjectRecord, name :: String }
+  PlayerPiece { gameObjectRecord :: GameObjectRecord, name :: String, peerId :: PeerId }
 
 derive instance eqPlayerPiece :: Eq PlayerPiece
+
+instance jsonablePlayerPiece :: Jsonable PlayerPiece
 
 instance encodeJsonPlayerPiece :: EncodeJson PlayerPiece where
   encodeJson (PlayerPiece r) = encodeJson r
@@ -36,13 +41,17 @@ instance decodeJsonPlayerPiece :: DecodeJson PlayerPiece where
       Right r  -> Right $ PlayerPiece r
       Left err -> Left err
 
-instance isGameObjectPlayerPiece :: IsGameObject PlayerPiece where
+instance decodeJsonWithSamplePlayerPiece :: DecodeJsonWithSample PlayerPiece where
+    decodeJsonWithSample _ = decodeJson
+
+
+instance isGameObjectPlayerPiece :: IsGameObject GState PlayerPiece where
   gameObjectRecord (PlayerPiece {gameObjectRecord:r}) = r
   updateGameObjectRecordF f (PlayerPiece pp@{gameObjectRecord:r}) = 
     map (PlayerPiece <<< pp {gameObjectRecord = _}) $ f r
 
-newPlayerPiece :: { name :: String, xyState :: MovingPoint, radius :: Number } -> PlayerPiece
-newPlayerPiece { name, xyState, radius } = 
+newPlayerPiece :: { peerId :: PeerId, name :: String, xyState :: MovingPoint, radius :: Number } -> PlayerPiece
+newPlayerPiece { peerId, name, xyState, radius } = 
   PlayerPiece
   {
     gameObjectRecord: 
@@ -54,12 +63,16 @@ newPlayerPiece { name, xyState, radius } =
       , angleState: initMovingAngle
       }
   , name
+  , peerId
   }
 
-instance drawablePlayerPiece :: Drawable PlayerPiece where
-  draw (PlayerPiece {gameObjectRecord: {shape: Ball{radius}, xyState: {pos: {x,y}}}, name}) {context, style} =  
+instance drawablePlayerPiece :: Drawable GState PlayerPiece where
+  draw 
+    {context, peerId: my_peerId, gstate: GState { it }} 
+    (PlayerPiece {gameObjectRecord: {shape: Ball{radius}, xyState: {pos: {x,y}}}, name, peerId}) 
+    =  
     do
-    Canvas.setFillStyle context style
+    Canvas.setFillStyle context playerStyle
     Canvas.fillPath context $ Canvas.arc context 
       { start: 0.0, end: 2.0*pi, radius, x, y }
     Canvas.setFillStyle context "black"
@@ -69,5 +82,11 @@ instance drawablePlayerPiece :: Drawable PlayerPiece where
     Canvas.fillText context name x (y+0.6*radius)
     where
     textSize = Int.round $ 1.6*radius
+    playerStyle 
+      | is_it = "lightcoral"
+      | is_me = "bisque"
+      | otherwise = "white"
+    is_it = peerId == it
+    is_me = peerId == my_peerId
 
 
