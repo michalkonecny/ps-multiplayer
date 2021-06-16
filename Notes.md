@@ -1,0 +1,63 @@
+# Notes
+
+## TODO
+
+* [ ] Turn TigGame into an instance of a generic engine
+  * Extract as much generic functionality as possible
+    * [x] MovingPoint
+    * [x] GameObject state
+    * [x] GameCanvas
+    * [ ] Coordinator
+    * [ ] GameObject actions
+    * [ ] RootComponent
+* Create other simple games
+  * [ ] Coin ball
+
+## Main ideas
+
+* main ideas
+* P2P with a leader
+  * non-leaders send relevant keyboard / mouse events to the leader
+    * the leader calculates all state changes
+    * the leader broadcasts state changes to peers
+      * efficiently communicate state changes
+        * only sprites or global variables that changed
+        * for each sprite, communicate only aspects that changed, eg only position or scaling
+    * leader assigned and re-assigned automatically when players join and leave
+      * joining protocol:
+        * listen on the channel and note other players' ids, who is the leader
+        * randomly chose an id number, check not coinciding
+        * if noone else present, assume leadership
+        * broadcast own id and leader status
+        * keep pinging others at least every 200 ms (leader) or 1000 ms (non-leader)
+      * leader changes:
+        * if leader receives leadership claim from another peer (eg if two start at the same time)
+          * if their id is larger, stop being the leader
+          * if their id is smaller, re-broadcast own id and leader status
+        * if the leader falls silent, the largest id becomes the leader
+* inspired by scratch concepts
+  * main controller
+    * state
+      * a dictionary of sprites / containers
+        * each has its internal state
+      * a dictionary of global variables, eg
+        * scores
+        * elapsed / remaining time
+      * leader status (transparent to game programmers)
+  * sprites and containers
+    * internal state, a combination of:
+      * shape = tree of circles / rectangles joined by "union" or "difference" operations
+      * size scaling factor
+      * xy_state: position, velocity, accelleration
+      * angle_state: angle, spin, spin accelleration
+      * consistency: phantom, solid or container (possibly with a set of rectrangular holes)
+      * mass, "springiness", friction
+      * logical state (other state components can depends on this)
+    * canvas draw
+      * can include drawing images, rendering text
+    * reacting to events
+      * keyboard/mouse input from player n
+      * collision
+        * movement response handled automatically
+  * backdrops
+  * sounds
