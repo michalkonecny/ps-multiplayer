@@ -57,7 +57,7 @@ A phantom Halogen component with the following:
 -}
 
 pulsePeriod_ms :: Number
-pulsePeriod_ms = 100.0
+pulsePeriod_ms = 500.0
 
 pulseTimeoutMs :: Number
 pulseTimeoutMs = 2000.0
@@ -163,10 +163,14 @@ component valuesSpec =
       { handleAction = handleAction }
     }
   where
-  render {m_my_info: Nothing} =
-    HH.slot _lobby 0 (Lobby.component valuesSpec) unit (Just <<< HandleLobby)
-  render {m_my_info: Just _} =
-    HH.text "<<Coordinator>>"
+  render {m_my_info: Nothing, peers_order, peers_alive, peers_power} =
+    HH.div_ 
+      [
+        HH.slot _lobby 111 (Lobby.component valuesSpec) unit (Just <<< HandleLobby)
+      , HH.text $ show peers_order <> "; " <> show peers_alive <> "; " <> show peers_power
+      ]
+  render {m_my_info: Just my_info, peers_order, peers_alive, peers_power} =
+    HH.text $ show my_info <> "; " <> show peers_order <> "; " <> show peers_alive <> "; " <> show peers_power
 
   handleAction = case _ of
     -- messages from peers:
@@ -190,14 +194,16 @@ component valuesSpec =
       -- set my player to the state:
       H.modify_ $ _ { m_my_info = Just {peerId} }
       H.raise $ O_Started { my_id: peerId, lobby_values: values }
-      -- start periodic emitters for Pulse and Measure actions:
-      void $ H.subscribe $ periodicEmitter pulsePeriod_ms Pulse
-      void $ H.subscribe $ periodicEmitter checkPowerPeriod_ms MeasurePower
+
+      -- start periodic emitters for Pulse and MeasurePower actions:
+      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms Pulse
+      void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
 
       -- force a CheckPeerOrder now to sync with others asap:
       handleAction MeasurePower
 
     MeasurePower -> do
+      liftEffect $ log "MeasurePower"
       state@{m_ws, m_my_info, peers_power} <- H.get
       case m_my_info of
         Nothing -> pure unit
@@ -209,13 +215,15 @@ component valuesSpec =
       handleAction CheckPeerOrder
 
     CheckPeerOrder -> do
+      liftEffect $ log "CheckPeerOrder"
       state@{m_ws, m_my_info, peers_power} <- H.get
       if not $ i_am_leader state then pure unit
         else do
           let compPower (Tuple _ p1) (Tuple _ p2) = compare (p1::Number) p2
-          let peers_order = map fst $ Array.sortBy compPower $ Map.toUnfoldableUnordered peers_power
-          H.modify_ $ _ { peers_order = peers_order }
-          liftEffect $ broadcastToPeers m_ws {peers_order}
+          let peers_order2 = map fst $ Array.sortBy compPower $ Map.toUnfoldableUnordered peers_power
+          liftEffect $ log $ "CheckPeerOrder: peers_order2 = " <> show peers_order2
+          H.modify_ $ _ { peers_order = peers_order2 }
+          liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
 
     NewPowerMeasurement {peerId, power} -> do
       H.modify_ \s -> s{ peers_power = Map.insert peerId power s.peers_power }
@@ -237,7 +245,7 @@ component valuesSpec =
           -- liftEffect $ log $ "deadPlayersArray = " <> show deadPlayersArray
 
           -- tell Lobby and parent to remove these players:
-          void $ H.query _lobby 0 $ H.tell (Lobby.Q_ClearPlayers deadPlayersArray)
+          void $ H.query _lobby 111 $ H.tell (Lobby.Q_ClearPlayers deadPlayersArray)
           H.raise $ O_RemovePeers deadPlayersArray
 
           -- delete the old players from state:
@@ -311,14 +319,16 @@ broadcastToPeers _ _ = pure unit
 
 
 -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
-periodicEmitter :: Number -> Action -> ES.EventSource Aff Action
-periodicEmitter periodMs action = ES.EventSource.affEventSource \emitter -> do
+periodicEmitter :: String -> Number -> Action -> ES.EventSource Aff Action
+periodicEmitter name periodMs action = ES.EventSource.affEventSource \emitter -> do
+  liftEffect $ log $ "starting periodicEmmitter " <> name
   fiber <- Aff.forkAff $ forever do
     Aff.delay $ Milliseconds periodMs
+    liftEffect $ log $ "emitting on " <> name
     ES.EventSource.emit emitter action
 
   pure $ ES.EventSource.Finalizer do
-    Aff.killFiber (error "emitter: Event source finalized") fiber
+    Aff.killFiber (error $ "emitter " <> name <> ": Event source finalized") fiber
 
 measurePower :: Effect Number
 measurePower = do

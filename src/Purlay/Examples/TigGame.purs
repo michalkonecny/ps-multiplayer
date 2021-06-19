@@ -73,17 +73,14 @@ import Web.UIEvent.KeyboardEvent as KE
 import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 
--- mainTigGame :: Effect Unit
--- mainTigGame = do
---   HA.runHalogenAff do
---     body <- HA.awaitBody
---     runUI rootComponent unit body
+mainTigGame :: Effect Unit
+mainTigGame = do
+  HA.runHalogenAff do
+    body <- HA.awaitBody
+    runUI rootComponent unit body
 
-pulsePeriodMs :: Number
-pulsePeriodMs = 50.0
-
-pulseTimeoutMs :: Number
-pulseTimeoutMs = 1000.0
+tickPeriodMs :: Number
+tickPeriodMs = 50.0
 
 maxX :: Number
 maxX = 800.0
@@ -157,20 +154,19 @@ _coordinator = SProxy
 _canvas :: SProxy "canvas"
 _canvas = SProxy
 
-type Slots = 
-  ( coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
-  , canvas      :: H.Slot (GameCanvas.Query GState) Action Int )
+-- type Slots = 
+--   ( coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
+--   , canvas      :: H.Slot (GameCanvas.Query GState) Action Int )
 
-passStateToCanvas :: forall output.
-  H.HalogenM GameState Action Slots output Aff Unit
-passStateToCanvas = do
-  {m_myPeer, gstate, m_myPiece, otherPieces} <- H.get
-  case m_myPeer, m_myPiece of
-    Just _, Just myPiece -> do
-      let pieces = map anyGameObject $ List.Cons myPiece $ Map.values otherPieces
-      void $ H.query _canvas 1 $ H.tell (GameCanvas.Q_NewState gstate pieces)
-    _, _ -> pure unit
-
+-- passStateToCanvas :: forall output.
+--   H.HalogenM GameState Action Slots output Aff Unit
+-- passStateToCanvas = do
+--   {m_myPeer, gstate, m_myPiece, otherPieces} <- H.get
+--   case m_myPeer, m_myPiece of
+--     Just _, Just myPiece -> do
+--       let pieces = map anyGameObject $ List.Cons myPiece $ Map.values otherPieces
+--       void $ H.query _canvas 11 $ H.tell (GameCanvas.Q_NewState gstate pieces)
+--     _, _ -> pure unit
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
@@ -183,10 +179,19 @@ rootComponent =
       { handleAction = handleAction }
     }
   where
+  -- render :: GameState -> H.ComponentHTML Action Slots Aff
   render {m_myPeer: Nothing} =
-    HH.slot _coordinator 0 (Coordinator.component tigLobbySpec) unit (Just <<< HandleCoordinator)
+    HH.div_
+      [
+        HH.slot _coordinator 1 (Coordinator.component tigLobbySpec) unit (Just <<< HandleCoordinator)
+      ]
   render {m_myPeer: Just peerId} =
-    HH.slot _canvas 1 (GameCanvas.component {peerId, initGState, width: maxX, height: maxY}) unit Just
+    HH.p_
+      [
+        HH.slot _coordinator 1 (Coordinator.component tigLobbySpec) unit (Just <<< HandleCoordinator)
+      , HH.br_
+      , HH.slot _canvas 11 (GameCanvas.component {peerId, initGState, width: maxX, height: maxY}) unit Just
+      ]
 
   tigLobbySpec = sb do
     ae$
