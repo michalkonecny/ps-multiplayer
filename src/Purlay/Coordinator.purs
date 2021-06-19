@@ -79,10 +79,11 @@ type StateChange = { name :: String, value :: Json }
 
 type State = {
   m_ws :: Maybe WebSocket
-, m_my_info :: Maybe { peerId :: PeerId }
+, m_my_info :: Maybe { peerId :: PeerId, values :: Lobby.Values }
 , peers_order :: Array PeerId
 , peers_alive :: Map.Map PeerId Instant
 , peers_power :: Map.Map PeerId PowerMeasurement
+, peers_values :: Map.Map PeerId Lobby.Values
 }
 
 type PowerMeasurement = Number -- the larger, the more powerful
@@ -101,6 +102,7 @@ initialState = {
 , peers_order: []
 , peers_alive: Map.empty
 , peers_power: Map.empty
+, peers_values: Map.empty
 }
 
 data Action
@@ -112,7 +114,7 @@ data Action
   -- the following come from peers, via decoding the above String:
   | PeerPulse PeerId
   | NewPeersOrder (Array PeerId)
-  | NewPowerMeasurement {peerId::PeerId, power::PowerMeasurement}
+  | NewPowerMeasurementAndValues {peerId::PeerId, power::PowerMeasurement, values::Lobby.Values}
   | StateChanges (Array StateChange)
 
 messageToAction :: String -> Either String Action
@@ -138,8 +140,9 @@ messageToAction msg = do
     ({peers_order} :: {peers_order :: Array PeerId}) <- decodeJson json
     pure (NewPeersOrder peers_order)
   parseNewPowerMeasurement json = do
-    ({peerId, power} :: {peerId :: PeerId, power :: PowerMeasurement}) <- decodeJson json
-    pure (NewPowerMeasurement {peerId, power})
+    ({peerId, power, values} :: 
+      {peerId :: PeerId, power :: PowerMeasurement, values :: Lobby.Values}) <- decodeJson json
+    pure (NewPowerMeasurementAndValues {peerId, power,values})
 
   describeErr :: forall b.String -> Either JsonDecodeError b -> Either String b
   describeErr s = mapLeft (\ err -> s <> (printJsonDecodeError err))
@@ -192,7 +195,7 @@ component valuesSpec =
 
     HandleLobby (Lobby.O_SelectedPlayer peerId values) -> do
       -- set my player to the state:
-      H.modify_ $ _ { m_my_info = Just {peerId} }
+      H.modify_ $ _ { m_my_info = Just {peerId, values} }
       H.raise $ O_Started { my_id: peerId, lobby_values: values }
 
       -- start periodic emitters for Pulse and MeasurePower actions:
@@ -203,19 +206,19 @@ component valuesSpec =
       handleAction MeasurePower
 
     MeasurePower -> do
-      liftEffect $ log "MeasurePower"
+      -- liftEffect $ log "MeasurePower"
       state@{m_ws, m_my_info, peers_power} <- H.get
       case m_my_info of
         Nothing -> pure unit
-        Just {peerId} -> do
+        Just {peerId,values} -> do
           power <- liftEffect measurePower
-          liftEffect $ broadcastToPeers m_ws {peerId, power}
+          liftEffect $ broadcastToPeers m_ws {peerId, power, values}
           let peers_power2 = Map.insert peerId power peers_power
           H.modify_ $ _ { peers_power = peers_power2 }
       handleAction CheckPeerOrder
 
     CheckPeerOrder -> do
-      liftEffect $ log "CheckPeerOrder"
+      -- liftEffect $ log "CheckPeerOrder"
       state@{m_ws, m_my_info, peers_power} <- H.get
       if not $ i_am_leader state then pure unit
         else do
@@ -225,8 +228,12 @@ component valuesSpec =
           H.modify_ $ _ { peers_order = peers_order2 }
           liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
 
-    NewPowerMeasurement {peerId, power} -> do
-      H.modify_ \s -> s{ peers_power = Map.insert peerId power s.peers_power }
+    NewPowerMeasurementAndValues {peerId, power, values} -> do
+      H.modify_ \s -> s
+        { peers_power  = Map.insert peerId power s.peers_power 
+        , peers_values = Map.insert peerId values s.peers_values
+        }
+      void $ H.query _lobby 111 $ H.tell (Lobby.Q_NewPlayer peerId values)
 
     NewPeersOrder peers_order -> do
       H.modify_ $ _ {peers_order = peers_order}
