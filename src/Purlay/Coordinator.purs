@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
-import Data.Array ((..))
+import Data.Array (null, (..))
 import Data.Array as Array
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..))
@@ -152,8 +152,8 @@ messageToAction msg = do
 _lobby :: SProxy "lobby"
 _lobby = SProxy
 
-type Slots = 
-  ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
+-- type Slots = 
+--   ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
 
 component :: forall input. Lobby.ValuesSpec -> H.Component HH.HTML Query input Output Aff
 component valuesSpec =
@@ -219,13 +219,13 @@ component valuesSpec =
 
     CheckPeerOrder -> do
       -- liftEffect $ log "CheckPeerOrder"
-      state@{m_ws, m_my_info, peers_power} <- H.get
-      if not $ i_am_leader state then pure unit
-        else do
-          let compPower (Tuple _ p1) (Tuple _ p2) = compare (p1::Number) p2
-          let peers_order2 = map fst $ Array.sortBy compPower $ Map.toUnfoldableUnordered peers_power
-          liftEffect $ log $ "CheckPeerOrder: peers_order2 = " <> show peers_order2
-          H.modify_ $ _ { peers_order = peers_order2 }
+      state@{m_ws, m_my_info, peers_power, peers_order: peers_order1} <- H.get
+      when (i_am_leader state || null peers_order1) do
+        let compSnd (Tuple _ p1) (Tuple _ p2) = compare (p1::Number) p2
+        let peers_order2 = map fst $ Array.sortBy compSnd $ Map.toUnfoldableUnordered peers_power
+        liftEffect $ log $ "CheckPeerOrder: peers_order2 = " <> show peers_order2
+        H.modify_ $ _ { peers_order = peers_order2 }
+        when (i_am_leader state) do
           liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
 
     NewPowerMeasurementAndValues {peerId, power, values} -> do
