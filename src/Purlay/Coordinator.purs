@@ -2,7 +2,6 @@ module Purlay.Coordinator where
 
 import Prelude
 
-import Control.Monad.Rec.Class (forever)
 import Data.Argonaut (class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
 import Data.Array (null, (..))
 import Data.Array as Array
@@ -24,9 +23,9 @@ import Effect.Now (now)
 import Halogen (liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Purlay.EitherHelpers (mapLeft, (<||>), (<|||>))
+import Purlay.HalogenHelpers (periodicEmitter)
 import Purlay.Lobby as Lobby
 import WSListener (setupWSListener)
 import Web.Socket.WebSocket (WebSocket)
@@ -163,7 +162,7 @@ component valuesSpec =
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
-      { handleAction = handleAction }
+      { handleAction = handleAction, handleQuery = handleQuery }
     }
   where
   render {m_my_info: Nothing, peers_order, peers_alive, peers_power} =
@@ -174,6 +173,12 @@ component valuesSpec =
       ]
   render {m_my_info: Just my_info, peers_order, peers_alive, peers_power} =
     HH.text $ show my_info <> "; " <> show peers_order <> "; " <> show peers_alive <> "; " <> show peers_power
+
+  handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
+  handleQuery = case _ of
+    Q_StateChanges changes -> do
+      handleAction $ StateChanges changes
+      pure Nothing
 
   handleAction = case _ of
     -- messages from peers:
@@ -277,7 +282,9 @@ component valuesSpec =
       time <- liftEffect now
       H.modify_ \s -> s { peers_alive = Map.insert peerId time s.peers_alive }
 
-    _ -> pure unit -- TODO: StateChanges
+    StateChanges changes -> do
+      {m_ws} <- H.get
+      liftEffect $ broadcastToPeers m_ws {changes}
 
 olderThan :: Number -> Instant -> Boolean
 olderThan timeCutOff time =
@@ -288,54 +295,6 @@ broadcastToPeers :: forall t. EncodeJson t => Maybe WebSocket -> t -> Effect Uni
 broadcastToPeers (Just ws) msg = 
   WS.sendString ws $ stringify $ encodeJson msg
 broadcastToPeers _ _ = pure unit
-
---   handleMoveBy moveCenter = do
---     {m_ws,m_myPlayer,gameState:{it,itActive,playersData}} <- H.get
---     case m_myPlayer of
---       Nothing -> pure unit
---       Just myPlayer -> do
---         case Map.lookup myPlayer playersData of
---           Nothing -> pure unit
---           Just {playerPiece} -> do
---             -- make the move locally:
---             let newPlayerPiece = updateXYState (\r -> moveCenter r.xyState) playerPiece
---             time <- liftEffect now
---             H.modify_ $ updateGameState $ \st -> 
---               st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece, time} st.playersData }
---             passStateToCanvas
-
---             -- send new position to peers:
---             liftEffect $ sendMyPos m_ws {player: myPlayer, playerPiece: newPlayerPiece}
-
---             -- check for a collision:
---             case getCollision myPlayer newPlayerPiece playersData of
---               Nothing -> pure unit
---               Just (Tuple player newPlayerPiece2) -> do -- collision occurred, bounced off another player
---                   -- change my movement due to the bounce:
---                   H.modify_ $ updateGameState $ \st -> 
---                     st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece2, time} st.playersData }
---                   passStateToCanvas
-
---                 -- if I am it, tig them!
---                   when (myPlayer == it && itActive) do
---                     -- gotcha! update it locally:
---                     H.modify_ $ updateGameState $ _ { it = player }
---                     passStateToCanvas
---                     -- and announce new "it":
---                     liftEffect $ sendIt m_ws player
-
-
--- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
-periodicEmitter :: String -> Number -> Action -> ES.EventSource Aff Action
-periodicEmitter name periodMs action = ES.EventSource.affEventSource \emitter -> do
-  liftEffect $ log $ "starting periodicEmmitter " <> name
-  fiber <- Aff.forkAff $ forever do
-    Aff.delay $ Milliseconds periodMs
-    liftEffect $ log $ "emitting on " <> name
-    ES.EventSource.emit emitter action
-
-  pure $ ES.EventSource.Finalizer do
-    Aff.killFiber (error $ "emitter " <> name <> ": Event source finalized") fiber
 
 measurePower :: Effect Number
 measurePower = do

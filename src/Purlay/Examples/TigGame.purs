@@ -40,7 +40,6 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
-import Halogen (liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
@@ -57,6 +56,7 @@ import Purlay.Examples.TigGame.GState (GState(..), initGState)
 import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece(..), newPlayerPiece)
 import Purlay.GameCanvas as GameCanvas
 import Purlay.GameObject (anyGameObject, bounceOff, gameObjectRecord, updateXYState)
+import Purlay.HalogenHelpers (periodicEmitter, subscribeToKeyDownUp)
 import Purlay.JsonHelpers (class Jsonable, AnyJsonable(..), anyJsonable)
 import Purlay.Lobby (Output(..), Player)
 import Purlay.Lobby as Lobby
@@ -79,8 +79,8 @@ mainTigGame = do
     body <- HA.awaitBody
     runUI rootComponent unit body
 
-tickPeriodMs :: Number
-tickPeriodMs = 50.0
+tickPeriod_ms :: Number
+tickPeriod_ms = 50.0
 
 maxX :: Number
 maxX = 800.0
@@ -202,7 +202,7 @@ rootComponent =
       }
 
   handleAction = case _ of
-    -- messages from the Coordinator:
+    -- Coordinator tells us we can start playing:
     HandleCoordinator (Coordinator.O_Started {my_id, lobby_values}) -> do
       -- set my player to the state:
       let name = fromMaybe "?" $ Map.lookup "name" lobby_values
@@ -212,25 +212,16 @@ rootComponent =
       -- force a Pulse now to sync with others asap:
       handleAction FrameTick
 
-    _ -> pure unit -- TODO
---       -- start frame ticker:
---       void $ H.subscribe frameTimer
+      -- start frame ticker:
+      void $ H.subscribe $ periodicEmitter "FrameTick" tickPeriod_ms FrameTick
 
---       -- subscribe to keyboard events:
---       document <- liftEffect $ Web.document =<< Web.window
---       H.subscribe' \sid ->
---         ES.eventListenerEventSource
---           KET.keydown
---           (HTMLDocument.toEventTarget document)
---           (map (HandleKeyDown sid) <<< KE.fromEvent)
---       H.subscribe' \sid ->
---         ES.eventListenerEventSource
---           KET.keyup
---           (HTMLDocument.toEventTarget document)
---           (map (HandleKeyUp sid) <<< KE.fromEvent)
-      
+      -- subscribe to keyboard events:
+      subscribeToKeyDownUp HandleKeyDown HandleKeyUp
+
+    _ -> pure unit -- TODO
+
 --     -- messages from peer players:
---     ReceiveMessageFromPeer msg -> do
+--     HandleCoordinator (Coordinator.O_StateChanges) msg -> do
 --       case messageToAction msg of
 --         Left err -> liftEffect $ log err
 --         Right action -> handleAction action
