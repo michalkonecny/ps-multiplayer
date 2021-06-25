@@ -52,6 +52,14 @@ type ValuesSpec = Array ValueSpec
 playersForSelection :: Array Player
 playersForSelection = [1,2,3,4,5]
 
+data Query a =
+    Q_NewPlayer Player Values a
+  | Q_ClearPlayers (Array Player) a
+
+data Output =
+    O_Connected WS.WebSocket
+  | O_SelectedPlayer Player Values
+
 data State = Connecting ConnectingState | SelectingPlayer SelectingPlayerState
 
 updateConnecting :: (ConnectingState -> ConnectingState) -> State -> State
@@ -82,14 +90,6 @@ data Action =
   | SetWSURL String
   | SetValue Key Value
   | SelectPlayer Player Values
-
-data Query a =
-    Q_NewPlayer Player Values a
-  | Q_ClearPlayers (Array Player) a
-
-data Output =
-    O_Connected WS.WebSocket
-  | O_SelectedPlayer Player Values
 
 component :: forall input. ValuesSpec -> H.Component HH.HTML Query input Output Aff
 component valuesSpec =
