@@ -14,7 +14,9 @@ module Purlay.Examples.TigGame.GState where
 
 import Purlay.Coordinator (PeerId)
 
-newtype GState = GState {
+newtype GState = GState GState_record
+
+type GState_record = {
   it :: PeerId
 }
 

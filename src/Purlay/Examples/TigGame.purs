@@ -19,6 +19,7 @@ import Prelude
 import Control.Monad.Rec.Class (forever)
 import Control.SequenceBuildMonad (ae, sb)
 import Data.Argonaut (class DecodeJson, class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
+import Data.Array as Array
 import Data.DateTime.Instant (Instant, unInstant)
 import Data.Either (Either(..), hush)
 import Data.Int as Int
@@ -30,7 +31,7 @@ import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Set as Set
 import Data.String as String
 import Data.Symbol (SProxy(..))
-import Data.Traversable (sequence, traverse_)
+import Data.Traversable (sequence, sequence_, traverse_)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
@@ -40,6 +41,7 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Console (log)
 import Effect.Exception (error)
 import Effect.Now (now)
+import Halogen (liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
@@ -48,11 +50,11 @@ import Halogen.Hooks as Hooks
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
-import Purlay.Coordinator (PeerId)
+import Purlay.Coordinator (PeerId, StateChange)
 import Purlay.Coordinator as Coordinator
 import Purlay.Drawable (draw)
 import Purlay.EitherHelpers (mapLeft, (<|||>))
-import Purlay.Examples.TigGame.GState (GState(..), initGState)
+import Purlay.Examples.TigGame.GState (GState(..), GState_record, initGState)
 import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece(..), newPlayerPiece)
 import Purlay.GameCanvas as GameCanvas
 import Purlay.GameObject (anyGameObject, bounceOff, gameObjectRecord, updateXYState)
@@ -140,6 +142,9 @@ initialGameState =  {
 -- , gvars: Map.singleton "it" (encodeJson 0)
 }
 
+updateGState :: (GState_record -> GState_record) -> GameState -> GameState
+updateGState f s@{gstate: GState gr} = s {gstate = GState (f gr) }
+
 data Action
   = HandleCoordinator Coordinator.Output
   | SetPlayer Player PlayerPiece
@@ -148,25 +153,48 @@ data Action
   | HandleKeyDown H.SubscriptionId KeyboardEvent
   | HandleKeyUp H.SubscriptionId KeyboardEvent
 
+changesToActions :: Array StateChange -> Either String (Array Action)
+changesToActions changes = sequence $ map doOne changes
+  where
+  doOne {name: "it", value} =
+    case decodeJson value of
+      Right it -> Right $ SetIt it
+      Left err -> Left $ "failed to parse `it`: " <> show err
+  doOne {name, value} =
+    case Int.fromString name, decodeJson value of
+      Just peerId, Right playerPiece ->
+        Right $ SetPlayer peerId playerPiece
+      _,_ -> 
+        Left $ "ignoring change: " <> show {name, value: stringify value}
+
+actionToChanges :: Action -> Array StateChange
+actionToChanges (SetPlayer player piece) = [{name: show player, value: encodeJson piece}]
+actionToChanges (SetIt it) = [{name: "it", value: encodeJson it}]
+actionToChanges _ = []
+
 _coordinator :: SProxy "coordinator"
 _coordinator = SProxy
 
 _canvas :: SProxy "canvas"
 _canvas = SProxy
 
--- type Slots = 
---   ( coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
---   , canvas      :: H.Slot (GameCanvas.Query GState) Action Int )
+type Slots = 
+  ( coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
+  , canvas      :: H.Slot (GameCanvas.Query GState) Action Int )
 
--- passStateToCanvas :: forall output.
---   H.HalogenM GameState Action Slots output Aff Unit
--- passStateToCanvas = do
---   {m_myPeer, gstate, m_myPiece, otherPieces} <- H.get
---   case m_myPeer, m_myPiece of
---     Just _, Just myPiece -> do
---       let pieces = map anyGameObject $ List.Cons myPiece $ Map.values otherPieces
---       void $ H.query _canvas 11 $ H.tell (GameCanvas.Q_NewState gstate pieces)
---     _, _ -> pure unit
+updateCanvas :: forall output. H.HalogenM GameState Action Slots output Aff Unit
+updateCanvas = do
+  {m_myPeer, gstate, m_myPiece, otherPieces} <- H.get
+  case m_myPeer, m_myPiece of
+    Just _, Just myPiece -> do
+      let pieces = map anyGameObject $ List.Cons myPiece $ Map.values otherPieces
+      void $ H.query _canvas 11 $ H.tell (GameCanvas.Q_NewState gstate pieces)
+    _, _ -> pure unit
+
+broadcastAction :: forall output. Action -> H.HalogenM GameState Action Slots output Aff Unit
+broadcastAction action =
+  void $ H.query _coordinator 1 $ H.tell $
+      Coordinator.Q_StateChanges $ actionToChanges action
 
 rootComponent :: forall input output query. H.Component HH.HTML query input output Aff
 rootComponent =
@@ -206,10 +234,11 @@ rootComponent =
     HandleCoordinator (Coordinator.O_Started {my_id, lobby_values}) -> do
       -- set my player to the state:
       let name = fromMaybe "?" $ Map.lookup "name" lobby_values
-      let playerPiece = newPlayerPiece { peerId: my_id, xyState: initialMPt my_id, name, radius: playerRadius }
+      let playerPiece = newPlayerPiece 
+            { peerId: my_id, xyState: initialMPt my_id, name, radius: playerRadius }
       H.modify_ \ s ->
         s { m_myPeer = Just my_id, m_myPiece = Just playerPiece }
-      -- force a Pulse now to sync with others asap:
+      -- force a tick now to sync with others asap:
       handleAction FrameTick
 
       -- start frame ticker:
@@ -218,36 +247,31 @@ rootComponent =
       -- subscribe to keyboard events:
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp
 
+    -- messages from peer players:
+    HandleCoordinator (Coordinator.O_StateChanges changes) -> do
+      case changesToActions changes of
+        Left err -> liftEffect $ log err
+        Right actions -> sequence_ $ map handleAction actions
+
+    SetPlayer peerId playerPiece -> do
+      H.modify_ $ \ s -> s { otherPieces = Map.insert peerId playerPiece s.otherPieces }
+      updateCanvas    
+
+    SetIt it -> do
+      H.modify_ $ updateGState (_ { it = it } ) <<< _ { itActive = false }
+      {m_myPeer} <- H.get
+      updateCanvas
+
+      -- am I it?
+      case m_myPeer of
+        Just myPeer | it == myPeer -> do
+          -- activate myself as "it" a bit later:
+          liftAff $ delay (Milliseconds 1000.0) -- 1 second
+          H.modify_ $ _ { itActive = true }
+          -- updateCanvas
+        _ -> pure unit
+
     _ -> pure unit -- TODO
-
---     -- messages from peer players:
---     HandleCoordinator (Coordinator.O_StateChanges) msg -> do
---       case messageToAction msg of
---         Left err -> liftEffect $ log err
---         Right action -> handleAction action
-
---     SetPlayer player playerPiece@(PlayerPiece r) -> do
---       -- get current time:
---       time <- liftEffect now
-
---       -- update state:
---       H.modify_ $ updateGameState $ \ st -> 
---         st { playersData = Map.insert player {playerPiece, time} st.playersData }
---       passStateToCanvas      
-
---       -- let the lobby know of this player:
---       void $ H.query _lobby 0 $ H.tell (Lobby.NewPlayer player (Map.singleton "name" r.name))
-
---     SetIt it -> do
---       H.modify_ $ updateGameState $ _ { it = it, itActive = false }
---       {m_myPlayer} <- H.get
---       pure unit
---       case m_myPlayer of
---         Just myPlayer | it == myPlayer -> do
---           liftAff $ delay (Milliseconds 1000.0) -- 1 second
---           H.modify_ $ updateGameState $ _ { itActive = true }
---         _ -> pure unit
---       -- passStateToCanvas
 
 --     -- control my movement:
 --     HandleKeyDown _sid ev -> do
@@ -304,54 +328,34 @@ rootComponent =
 --             _ -> pure unit
 
 
---   olderThan timeCutOff {time} =
---     let (Milliseconds timeMs) = unInstant time in
---     timeMs < timeCutOff
+  handleMoveBy move = do
+    {m_myPeer,m_myPiece,itActive,gstate:GState {it},otherPieces} <- H.get
+    case m_myPeer, m_myPiece of
+      Just myPeer, Just playerPiece -> do
+        -- make the move locally:
+        let newPlayerPiece = updateXYState (\r -> move r.xyState) playerPiece
+        H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
+        updateCanvas
 
---   handleMoveBy moveCenter = do
---     {m_ws,m_myPlayer,gameState:{it,itActive,playersData}} <- H.get
---     case m_myPlayer of
---       Nothing -> pure unit
---       Just myPlayer -> do
---         case Map.lookup myPlayer playersData of
---           Nothing -> pure unit
---           Just {playerPiece} -> do
---             -- make the move locally:
---             let newPlayerPiece = updateXYState (\r -> moveCenter r.xyState) playerPiece
---             time <- liftEffect now
---             H.modify_ $ updateGameState $ \st -> 
---               st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece, time} st.playersData }
---             passStateToCanvas
+        -- send my new position to peers:
+        broadcastAction $ SetPlayer myPeer newPlayerPiece
 
---             -- send new position to peers:
---             liftEffect $ sendMyPos m_ws {player: myPlayer, playerPiece: newPlayerPiece}
+        -- check for a collision:
+        case getCollision myPeer newPlayerPiece otherPieces of
+          Nothing -> pure unit
+          Just (Tuple collidedPlayer newPlayerPiece2) -> do -- collision occurred, bounced off another player
+              -- change my movement due to the bounce:
+              H.modify_ $ _ {m_myPiece = Just newPlayerPiece2 }
+              updateCanvas
 
---             -- check for a collision:
---             case getCollision myPlayer newPlayerPiece playersData of
---               Nothing -> pure unit
---               Just (Tuple player newPlayerPiece2) -> do -- collision occurred, bounced off another player
---                   -- change my movement due to the bounce:
---                   H.modify_ $ updateGameState $ \st -> 
---                     st { playersData = Map.insert myPlayer {playerPiece: newPlayerPiece2, time} st.playersData }
---                   passStateToCanvas
-
---                 -- if I am it, tig them!
---                   when (myPlayer == it && itActive) do
---                     -- gotcha! update it locally:
---                     H.modify_ $ updateGameState $ _ { it = player }
---                     passStateToCanvas
---                     -- and announce new "it":
---                     liftEffect $ sendIt m_ws player
-
--- -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
--- pulseTimer :: forall m. MonadAff m => ES.EventSource m Action
--- pulseTimer = ES.EventSource.affEventSource \emitter -> do
---   fiber <- Aff.forkAff $ forever do
---     Aff.delay $ Milliseconds pulsePeriodMs
---     ES.EventSource.emit emitter Pulse
-
---   pure $ ES.EventSource.Finalizer do
---     Aff.killFiber (error "Event source finalized") fiber
+            -- if I am it, tig them!
+              when (myPeer == it && itActive) do
+                -- gotcha! update it locally:
+                H.modify_ $ updateGState $ _ { it = collidedPlayer }
+                updateCanvas
+                -- and announce new "it":
+                broadcastAction $ SetIt collidedPlayer
+      _,_ -> pure unit
 
 getCollision :: PeerId -> PlayerPiece -> PlayerPieces -> Maybe (Tuple PeerId PlayerPiece)
 getCollision peer1 object1 gameObjects =

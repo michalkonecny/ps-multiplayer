@@ -72,7 +72,7 @@ data Output
   | O_RemovePeers (Array PeerId)
 
 data Query a
-  = Q_StateChanges (Array StateChange)
+  = Q_StateChanges (Array StateChange) a
 
 type StateChange = { name :: String, value :: Json }
 
@@ -176,7 +176,7 @@ component valuesSpec =
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery = case _ of
-    Q_StateChanges changes -> do
+    Q_StateChanges changes _ -> do
       handleAction $ StateChanges changes
       pure Nothing
 
