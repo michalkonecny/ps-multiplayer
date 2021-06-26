@@ -87,6 +87,10 @@ type State = {
 
 type PowerMeasurement = Number -- the larger, the more powerful
 
+showState :: State -> String
+showState {m_my_info, peers_order, peers_alive, peers_power, peers_values} = 
+  show {m_my_info, peers_order, peers_alive, peers_power, peers_values}
+
 i_am_leader :: State -> Boolean
 i_am_leader { m_my_info: Just {peerId}, peers_order } = 
   case Array.head peers_order of
@@ -166,14 +170,14 @@ component valuesSpec =
       { handleAction = handleAction, handleQuery = handleQuery }
     }
   where
-  render {m_my_info: Nothing, peers_order, peers_alive, peers_power} =
+  render state@{m_my_info: Nothing} =
     HH.div_ 
       [
         HH.slot _lobby 111 (Lobby.component valuesSpec) unit (Just <<< HandleLobby)
-      , HH.text $ show peers_order <> "; " <> show peers_alive <> "; " <> show peers_power
+      , HH.text $ showState state
       ]
-  render {m_my_info: Just my_info, peers_order, peers_alive, peers_power} =
-    HH.text $ show my_info <> "; " <> show peers_order <> "; " <> show peers_alive <> "; " <> show peers_power
+  render state@{m_my_info: Just _} =
+    HH.text $ showState state
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery = case _ of
@@ -199,14 +203,14 @@ component valuesSpec =
           pure $ ES.EventSource.Finalizer do
             Aff.killFiber (error "websocket: Event source finalized") fiber
 
+      -- start periodic emitters for Pulse and MeasurePower actions:
+      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms OutgoingPulse
+      void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
+
     HandleLobby (Lobby.O_SelectedPlayer peerId values) -> do
       -- set my player to the state:
       H.modify_ $ _ { m_my_info = Just {peerId, values} }
       H.raise $ O_Started { my_id: peerId, lobby_values: values }
-
-      -- start periodic emitters for Pulse and MeasurePower actions:
-      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms OutgoingPulse
-      void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
 
       -- force a CheckPeerOrder now to sync with others asap:
       handleAction MeasurePower
@@ -245,7 +249,7 @@ component valuesSpec =
       H.modify_ $ _ {peers_order = peers_order}
 
     OutgoingPulse -> do
-      {m_ws, m_my_info, peers_order, peers_alive, peers_power} <- H.get
+      {m_ws, m_my_info, peers_order, peers_alive, peers_power, peers_values} <- H.get
 
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
@@ -255,17 +259,23 @@ component valuesSpec =
       if Map.isEmpty deadPlayers then pure unit
         else do
           let deadPlayersArray = Set.toUnfoldable $ Map.keys deadPlayers
-          -- liftEffect $ log $ "deadPlayersArray = " <> show deadPlayersArray
+          liftEffect $ log $ "deadPlayersArray = " <> show deadPlayersArray
 
           -- tell Lobby and parent to remove these players:
           void $ H.query _lobby 111 $ H.tell (Lobby.Q_ClearPlayers deadPlayersArray)
           H.raise $ O_RemovePeers deadPlayersArray
 
           -- delete the old players from state:
-          let peers_order2 = Array.filter (\k -> Map.member k deadPlayers) peers_order
-          let peers_alive2 = Map.filterKeys (\k -> Map.member k deadPlayers) peers_alive
-          let peers_power2 = Map.filterKeys (\k -> Map.member k deadPlayers) peers_power
-          H.modify_ $ _ { peers_alive = peers_alive2, peers_power = peers_power2 }
+          let isAlive = not <<< (_ `Map.member` deadPlayers)
+          let peers_order2 = Array.filter isAlive peers_order
+          let peers_alive2 = Map.filterKeys isAlive peers_alive
+          let peers_power2 = Map.filterKeys isAlive peers_power
+          let peers_values2 = Map.filterKeys isAlive peers_values
+          H.modify_ $ _ 
+            { peers_alive  = peers_alive2
+            , peers_power  = peers_power2
+            , peers_values = peers_values2
+            , peers_order  = peers_order2}
 
           -- if I am the leader, tell others about the change of peer order:
           state <- H.get
