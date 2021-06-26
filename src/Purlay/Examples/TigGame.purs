@@ -16,63 +16,39 @@ where
 
 import Prelude
 
-import Control.Monad.Rec.Class (forever)
 import Control.SequenceBuildMonad (ae, sb)
-import Data.Argonaut (class DecodeJson, class EncodeJson, Json, JsonDecodeError, decodeJson, encodeJson, parseJson, printJsonDecodeError, stringify)
+import Data.Argonaut (decodeJson, encodeJson, stringify)
 import Data.Array as Array
-import Data.DateTime.Instant (Instant, unInstant)
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..))
 import Data.Int as Int
 import Data.List (List, find)
 import Data.List as List
-import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Set as Set
-import Data.String as String
 import Data.Symbol (SProxy(..))
-import Data.Traversable (sequence, sequence_, traverse_)
+import Data.Traversable (sequence, sequence_)
 import Data.Tuple (Tuple(..))
-import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), delay)
-import Effect.Aff as Aff
-import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Aff.Class (liftAff)
 import Effect.Console (log)
-import Effect.Exception (error)
-import Effect.Now (now)
 import Halogen (liftEffect)
 import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
-import Halogen.HTML.Properties as HP
-import Halogen.Hooks as Hooks
-import Halogen.Query.EventSource as ES
-import Halogen.Query.EventSource as ES.EventSource
 import Halogen.VDom.Driver (runUI)
 import Purlay.Coordinator (PeerId, StateChange)
 import Purlay.Coordinator as Coordinator
-import Purlay.Drawable (draw)
-import Purlay.EitherHelpers (mapLeft, (<|||>))
 import Purlay.Examples.TigGame.GState (GState(..), GState_record, initGState)
-import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece(..), newPlayerPiece)
+import Purlay.Examples.TigGame.PlayerPiece (PlayerPiece, newPlayerPiece)
 import Purlay.GameCanvas as GameCanvas
-import Purlay.GameObject (anyGameObject, bounceOff, gameObjectRecord, updateXYState)
+import Purlay.GameObject (anyGameObject, bounceOff, updateXYState)
 import Purlay.HalogenHelpers (periodicEmitter, subscribeToKeyDownUp)
-import Purlay.JsonHelpers (class Jsonable, AnyJsonable(..), anyJsonable)
-import Purlay.Lobby (Output(..), Player)
-import Purlay.Lobby as Lobby
+import Purlay.Lobby (Player)
 import Purlay.MovingPoint (MovingPoint)
 import Purlay.MovingPoint as MPt
-import WSListener (setupWSListener)
-import Web.HTML (window) as Web
-import Web.HTML.HTMLDocument as HTMLDocument
-import Web.HTML.Window (document) as Web
-import Web.Socket.WebSocket (WebSocket)
-import Web.Socket.WebSocket as WS
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
-import Web.UIEvent.KeyboardEvent.EventTypes as KET
 
 
 mainTigGame :: Effect Unit
@@ -247,7 +223,10 @@ rootComponent =
       -- subscribe to keyboard events:
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp
 
-    -- messages from peer players:
+    HandleCoordinator (Coordinator.O_RemovePeers peers) -> do
+      H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
+
+    -- Coordinator relayes messages from peer players:
     HandleCoordinator (Coordinator.O_StateChanges changes) -> do
       case changesToActions changes of
         Left err -> liftEffect $ log err
@@ -271,62 +250,43 @@ rootComponent =
           -- updateCanvas
         _ -> pure unit
 
-    _ -> pure unit -- TODO
+    -- control my movement:
+    HandleKeyDown _sid ev -> do
+      case KE.key ev of
+        "ArrowLeft"  -> handleMoveBy (MPt.setAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (MPt.setAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (MPt.setAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (MPt.setAccelY speedIncrement)
+        _ -> pure unit
+    HandleKeyUp _sid ev -> do
+      case KE.key ev of
+        "ArrowLeft"  -> handleMoveBy (MPt.resetAccelX (- speedIncrement))
+        "ArrowRight" -> handleMoveBy (MPt.resetAccelX speedIncrement)
+        "ArrowUp"    -> handleMoveBy (MPt.resetAccelY (- speedIncrement))
+        "ArrowDown"  -> handleMoveBy (MPt.resetAccelY speedIncrement)
+        _ -> pure unit
 
---     -- control my movement:
---     HandleKeyDown _sid ev -> do
---       case KE.key ev of
---         "ArrowLeft"  -> handleMoveBy (MPt.setAccelX (- speedIncrement))
---         "ArrowRight" -> handleMoveBy (MPt.setAccelX speedIncrement)
---         "ArrowUp"    -> handleMoveBy (MPt.setAccelY (- speedIncrement))
---         "ArrowDown"  -> handleMoveBy (MPt.setAccelY speedIncrement)
---         _ -> pure unit
---     HandleKeyUp _sid ev -> do
---       case KE.key ev of
---         "ArrowLeft"  -> handleMoveBy (MPt.resetAccelX (- speedIncrement))
---         "ArrowRight" -> handleMoveBy (MPt.resetAccelX speedIncrement)
---         "ArrowUp"    -> handleMoveBy (MPt.resetAccelY (- speedIncrement))
---         "ArrowDown"  -> handleMoveBy (MPt.resetAccelY speedIncrement)
---         _ -> pure unit
---     Pulse -> do
---       -- find players who have not sent an update for some time:
---       (Milliseconds timeNow) <- unInstant <$> liftEffect now
---       let timeCutOff = timeNow - pulseTimeoutMs
---       {m_myPlayer, gameState:{playersData,it}} <- H.get
---       let deadPlayers = Map.filter (olderThan timeCutOff) playersData
-
---       -- tell Lobby to remove these players:
---       if Map.isEmpty deadPlayers then pure unit
---         else do
---           -- liftEffect $ log $ "deadPlayers = " <> show deadPlayers
---           void $ H.query _lobby 0 $ 
---             H.tell (Lobby.ClearPlayers $ Set.toUnfoldable $ Map.keys deadPlayers)
-
---       -- delete the old players from state:
---       let playersData2 = Map.filter (not <<< olderThan timeCutOff) playersData
---       H.modify_ $ updateGameState $ _ { playersData = playersData2 }
-
---       -- are we in the game play stage?
---       case m_myPlayer of
---         Nothing -> pure unit
---         Just myPlayer -> do
---           -- let others know we are still alive:
---           handleMoveBy $
---             MPt.move {slowDownRatio}
---             >>> MPt.constrainSpeed {maxSpeed} 
---             >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
+    FrameTick -> do
+      {m_myPeer,m_myPiece,itActive,gstate:GState {it},otherPieces} <- H.get
+      -- are we in the game play stage?
+      case m_myPeer of
+        Nothing -> pure unit
+        Just myPeer -> do
+          -- update position and velocity:
+          handleMoveBy $
+            MPt.move {slowDownRatio}
+            >>> MPt.constrainSpeed {maxSpeed} 
+            >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
           
---           -- check whether "it" exists
---           let itGone = not $ Map.member it playersData2
---           let m_minPlayer = Map.findMin playersData2
---           case m_minPlayer of
---             Just {key: minPlayer} | itGone && minPlayer == myPlayer -> do
---               -- there is no "it" and we are the player with lowerst number, thus we should be it!
---               H.modify_ $ updateGameState $ _ { it = myPlayer }
---               {m_ws} <- H.get
---               liftEffect $ sendIt m_ws myPlayer
---             _ -> pure unit
-
+          -- check whether "it" exists and if not, who should become "it":
+          let itGone = myPeer /= it && (not $ Map.member it otherPieces)
+          let iAmNewIt = case Map.findMin otherPieces of
+                          Just {key: minPeer} -> itGone && myPeer < minPeer
+                          _ -> itGone
+          when iAmNewIt do
+            -- there is no "it" and we are the player with lowerst number, thus we should be it!
+            H.modify_ $ updateGState $ _ { it = myPeer }
+            broadcastAction $ SetIt myPeer
 
   handleMoveBy move = do
     {m_myPeer,m_myPiece,itActive,gstate:GState {it},otherPieces} <- H.get
