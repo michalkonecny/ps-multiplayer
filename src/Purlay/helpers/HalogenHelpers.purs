@@ -18,8 +18,8 @@ import Control.Monad.Rec.Class (forever)
 import Effect.Aff (Milliseconds(..), error)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff)
-import Effect.Class (liftEffect)
-import Effect.Console (log)
+-- import Effect.Class (liftEffect)
+-- import Effect.Console (log)
 import Halogen as H
 import Halogen.Query.EventSource as ES
 import Halogen.Query.EventSource as ES.EventSource
@@ -33,10 +33,10 @@ import Web.UIEvent.KeyboardEvent.EventTypes as KET
 -- adapted from https://milesfrain.github.io/purescript-halogen/guide/04-Lifecycles-Subscriptions.html#implementing-a-timer
 periodicEmitter :: forall action m. MonadAff m => String -> Number -> action -> ES.EventSource m action
 periodicEmitter name periodMs action = ES.EventSource.affEventSource \emitter -> do
-  liftEffect $ log $ "starting periodicEmmitter " <> name
+  -- liftEffect $ log $ "starting periodicEmmitter " <> name
   fiber <- Aff.forkAff $ forever do
     Aff.delay $ Milliseconds periodMs
-    liftEffect $ log $ "emitting on " <> name
+    -- liftEffect $ log $ "emitting on " <> name
     ES.EventSource.emit emitter action
 
   pure $ ES.EventSource.Finalizer do
