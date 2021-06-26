@@ -106,15 +106,16 @@ initialState = {
 
 data Action
   = HandleLobby Lobby.Output
-  | Pulse
+  | OutgoingPulse
   | MeasurePower
   | CheckPeerOrder
+  | OutgoingStateChanges (Array StateChange)
   | ReceiveMessageFromPeer String
   -- the following come from peers, via decoding the above String:
-  | PeerPulse PeerId
-  | NewPeersOrder (Array PeerId)
-  | NewPowerMeasurementAndValues {peerId::PeerId, power::PowerMeasurement, values::Lobby.Values}
-  | StateChanges (Array StateChange)
+  | IncomingPulse PeerId
+  | IncomingPeersOrder (Array PeerId)
+  | IncomingPowerMeasurementAndValues {peerId::PeerId, power::PowerMeasurement, values::Lobby.Values}
+  | IncomingStateChanges (Array StateChange)
 
 messageToAction :: String -> Either String Action
 messageToAction msg = do
@@ -131,17 +132,17 @@ messageToAction msg = do
   where
   parsePeerPulse json = do
     ({pulse: peerId} :: {pulse :: PeerId}) <- decodeJson json
-    pure (PeerPulse peerId)
+    pure (IncomingPulse peerId)
   parseStateChanges json = do
     ({changes} :: {changes :: Array StateChange}) <- decodeJson json
-    pure (StateChanges changes)
+    pure (IncomingStateChanges changes)
   parseNewPeerOrder json = do
     ({peers_order} :: {peers_order :: Array PeerId}) <- decodeJson json
-    pure (NewPeersOrder peers_order)
+    pure (IncomingPeersOrder peers_order)
   parseNewPowerMeasurement json = do
     ({peerId, power, values} :: 
       {peerId :: PeerId, power :: PowerMeasurement, values :: Lobby.Values}) <- decodeJson json
-    pure (NewPowerMeasurementAndValues {peerId, power,values})
+    pure (IncomingPowerMeasurementAndValues {peerId, power,values})
 
   describeErr :: forall b.String -> Either JsonDecodeError b -> Either String b
   describeErr s = mapLeft (\ err -> s <> (printJsonDecodeError err))
@@ -177,7 +178,7 @@ component valuesSpec =
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery = case _ of
     Q_StateChanges changes _ -> do
-      handleAction $ StateChanges changes
+      handleAction $ OutgoingStateChanges changes
       pure Nothing
 
   handleAction = case _ of
@@ -204,7 +205,7 @@ component valuesSpec =
       H.raise $ O_Started { my_id: peerId, lobby_values: values }
 
       -- start periodic emitters for Pulse and MeasurePower actions:
-      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms Pulse
+      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms OutgoingPulse
       void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
 
       -- force a CheckPeerOrder now to sync with others asap:
@@ -233,17 +234,17 @@ component valuesSpec =
         when (i_am_leader state) do
           liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
 
-    NewPowerMeasurementAndValues {peerId, power, values} -> do
+    IncomingPowerMeasurementAndValues {peerId, power, values} -> do
       H.modify_ \s -> s
         { peers_power  = Map.insert peerId power s.peers_power 
         , peers_values = Map.insert peerId values s.peers_values
         }
       void $ H.query _lobby 111 $ H.tell (Lobby.Q_NewPlayer peerId values)
 
-    NewPeersOrder peers_order -> do
+    IncomingPeersOrder peers_order -> do
       H.modify_ $ _ {peers_order = peers_order}
 
-    Pulse -> do
+    OutgoingPulse -> do
       {m_ws, m_my_info, peers_order, peers_alive, peers_power} <- H.get
 
       -- find players who have not sent an update for some time:
@@ -278,13 +279,16 @@ component valuesSpec =
         Just {peerId} -> do
           liftEffect $ broadcastToPeers m_ws {pulse: peerId}
 
-    PeerPulse peerId -> do
+    IncomingPulse peerId -> do
       time <- liftEffect now
       H.modify_ \s -> s { peers_alive = Map.insert peerId time s.peers_alive }
 
-    StateChanges changes -> do
+    OutgoingStateChanges changes -> do
       {m_ws} <- H.get
       liftEffect $ broadcastToPeers m_ws {changes}
+
+    IncomingStateChanges changes -> do
+      H.raise $ O_StateChanges changes
 
 olderThan :: Number -> Instant -> Boolean
 olderThan timeCutOff time =
