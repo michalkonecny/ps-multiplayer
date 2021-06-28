@@ -7,5 +7,5 @@ import Graphics.Canvas as Canvas
 import Purlay.Coordinator (PeerId)
   
 class Drawable gstate t | t -> gstate where
-  draw :: { context :: Canvas.Context2D, peerId :: PeerId, gstate :: gstate } -> t -> Effect Unit
+  draw :: { context :: Canvas.Context2D, my_peerId :: PeerId, gstate :: gstate } -> t -> Effect Unit
 

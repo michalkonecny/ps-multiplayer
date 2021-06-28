@@ -28,9 +28,9 @@ data Query gstate a = Q_NewState gstate (List (AnyGameObject gstate)) a
 component ::
   forall input output m gstate.
   MonadAff m =>
-  {peerId :: PeerId, initGState :: gstate, width::Number, height::Number} -> 
+  {my_peerId :: PeerId, initGState :: gstate, width::Number, height::Number} -> 
   H.Component HH.HTML (Query gstate) input output m
-component {peerId, initGState, width, height} =
+component {my_peerId, initGState, width, height} =
   Hooks.component \{ queryToken } _ -> Hooks.do
     gobjs /\ modifyGObjs <- Hooks.useState List.Nil
     gstate /\ modifyGState <- Hooks.useState initGState
@@ -58,7 +58,7 @@ component {peerId, initGState, width, height} =
       where
       drawGOs context = liftEffect $ do
         drawBoard
-        traverse_ (draw {peerId, gstate, context}) gobjs
+        traverse_ (draw {my_peerId, gstate, context}) gobjs
         where
         drawBoard = do
           Canvas.setFillStyle context "lightgoldenrodyellow"

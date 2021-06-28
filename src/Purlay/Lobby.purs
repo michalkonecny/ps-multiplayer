@@ -19,23 +19,16 @@ import Data.Foldable (foldl)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff)
-import Effect.Aff as Aff
 import Effect.Console (log)
-import Halogen (ClassName(..), liftAff, liftEffect)
+import Halogen (ClassName(..), liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Web.HTML (window)
-import Web.HTML.Location (hostname, port)
-import Web.HTML.Window (location)
-import Web.Socket.ReadyState as ReadyState
-import Web.Socket.WebSocket as WS
 
-type Player = Int
+type PlayerId = Int
 
 type Key = String
 type Value = String
@@ -49,74 +42,51 @@ type ValueSpec =
   }
 type ValuesSpec = Array ValueSpec
 
-playersForSelection :: Array Player
-playersForSelection = [1,2,3,4,5]
+type Input = {valuesSpec :: ValuesSpec, my_playerId :: PlayerId }
 
 data Query a =
-    Q_NewPlayer Player Values a
-  | Q_ClearPlayers (Array Player) a
+    Q_NewPlayer PlayerId Values a
+  | Q_ClearPlayers (Array PlayerId) a
 
 data Output =
-    O_Connected WS.WebSocket
-  | O_SelectedPlayer Player Values
+    O_Play Values
 
-data State = Connecting ConnectingState | SelectingPlayer SelectingPlayerState
-
-updateConnecting :: (ConnectingState -> ConnectingState) -> State -> State
-updateConnecting fn = case _ of
-  Connecting s -> Connecting $ fn s
-  state -> state
-
-updateSelectingPlayer :: (SelectingPlayerState -> SelectingPlayerState) -> State -> State
-updateSelectingPlayer fn = case _ of
-  SelectingPlayer s -> SelectingPlayer $ fn s
-  state -> state
-
-type SelectingPlayerState = {  
-  values :: Values
-, players :: Map Player Values
+type State = {
+  my_playerId :: PlayerId
+, valuesSpec :: ValuesSpec
+, values :: Values
+, players :: Map PlayerId Values
 }
 
-type ConnectingState = {  
-  urlInput :: String
-, maybeMsg :: Maybe String
-}
-
-initialState :: State
-initialState = Connecting { urlInput: "ws://localhost:3000", maybeMsg: Nothing }
+initialState :: Input -> State
+initialState {valuesSpec, my_playerId} = {
+    my_playerId
+  , valuesSpec
+  , values: defaultValues
+  , players: Map.empty
+  }
+  where
+  defaultValues = Map.fromFoldable $ map getDefault valuesSpec
+    where
+    getDefault {key,default} = Tuple key default
 
 data Action =
-    Init
-  | SetWSURL String
-  | SetValue Key Value
-  | SelectPlayer Player Values
+    SetValue Key Value
+  | Play
 
-component :: forall input. ValuesSpec -> H.Component HH.HTML Query input Output Aff
-component valuesSpec =
+component :: H.Component HH.HTML Query Input Output Aff
+component =
   H.mkComponent
     { 
-      initialState: \a -> initialState
+      initialState
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
       { handleAction = handleAction
-      , handleQuery = handleQuery
-      , initialize = Just Init }
+      , handleQuery = handleQuery }
     }
   where
-  render (Connecting {urlInput, maybeMsg}) =
-    HH.div [] [ enterWSURL ]
-    where
-    enterWSURL = do
-      HH.div_ $ sb do
-        ae$ HH.div_ $ sb do 
-          ae$ HH.span_ $ sb do
-            ae$ HH.text "Enter broadcast server web-socket URL: ws://"
-            ae$ HH.input $ sb do
-              ae$ HP.value (String.drop 5 urlInput)
-              ae$ HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _))
-        ae$ HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]
-  render (SelectingPlayer {values, players}) = 
+  render {valuesSpec, values, players} = 
     HH.div_ $ sb do
       ae$ HH.div_ [chooseValues]
       ae$ HH.div_ [joinGame] 
@@ -129,7 +99,7 @@ component valuesSpec =
         ae$ HH.button
           (sb do 
             ae$ HP.title label
-            ae$ HE.onClick \_ -> Just (SelectPlayer player values))
+            ae$ HE.onClick \_ -> Just Play)
           [ HH.text label ]
       where
       player = (fromMaybe 0 $ map (_.key) (Map.findMax players)) + 1
@@ -158,43 +128,17 @@ component valuesSpec =
       playersArray = Map.toUnfoldable players
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery (Q_NewPlayer player values a) = do
-    H.modify_ $ updateSelectingPlayer $ \st -> st { players = Map.insert player values st.players }
+    H.modify_ \st -> st { players = Map.insert player values st.players }
     pure Nothing
   handleQuery (Q_ClearPlayers deadPlayers a) = do
     liftEffect $ log $ "ClearPlayers: deadPlayers = " <> (show deadPlayers) 
     let removePlayers mp = foldl (flip Map.delete) mp deadPlayers
-    H.modify_ $ updateSelectingPlayer $ \st -> st { players = removePlayers st.players }
+    H.modify_ \st -> st { players = removePlayers st.players }
     pure Nothing
 
   handleAction = case _ of
-    Init -> do
-      wsURL <- liftEffect getWSURL
-      liftAff $ Aff.delay (Aff.Milliseconds 500.0)
-      handleAction $ SetWSURL wsURL
-    SetWSURL wsURL -> do
-      ws <- liftEffect $ WS.create wsURL []
-      liftAff $ Aff.delay (Aff.Milliseconds 100.0) -- allow ws to initialise
-      rs <- liftEffect $ WS.readyState ws
-      if rs /= ReadyState.Open
-        then do
-          H.modify_ $ updateConnecting $ \st -> 
-            st { urlInput = wsURL, maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
-        else do
-          H.raise (O_Connected ws)
-          H.put $ SelectingPlayer { values: defaultValues, players: Map.empty }
-
     SetValue key value -> do
-      H.modify_ $ updateSelectingPlayer $ \st -> st { values = Map.insert key value st.values }
-    SelectPlayer player shape -> do
-      H.raise (O_SelectedPlayer player shape)
-
-  getWSURL = do
-    loc <- location =<< window
-    host <- hostname loc
-    p <- port loc
-    let prot = if host == "game-ws-broadcast.herokuapp.com" then "wss://" else "ws://"
-    pure $ prot <> host <> ":" <> p
-  defaultValues = Map.fromFoldable $ map getDefault valuesSpec
-    where
-    getDefault {key,default} = Tuple key default
-
+      H.modify_ \st -> st { values = Map.insert key value st.values }
+    Play -> do
+      {values} <- H.get
+      H.raise (O_Play values)

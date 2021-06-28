@@ -68,7 +68,7 @@ newPlayerPiece { peerId, name, xyState, radius } =
 
 instance drawablePlayerPiece :: Drawable GState PlayerPiece where
   draw 
-    {context, peerId: my_peerId, gstate: GState { it }} 
+    {context, my_peerId, gstate: GState { it }} 
     (PlayerPiece {gameObjectRecord: {shape: Ball{radius}, xyState: {pos: {x,y}}}, name, peerId}) 
     =  
     do

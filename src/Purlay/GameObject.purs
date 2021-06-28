@@ -46,7 +46,7 @@ instance decodeJsonWithSampleAnyGameObject :: DecodeJsonWithSample (AnyGameObjec
         passGO (\v -> map anyGameObject (decodeJsonWithSample v json))
 
 instance drawableAnyGameObject :: Drawable gstate (AnyGameObject gstate) where
-  draw {peerId, gstate, context} (AnyGameObject passGO) = passGO (draw {peerId, gstate, context})
+  draw params (AnyGameObject passGO) = passGO (draw params)
 
 {-| Working with game objects using their GameObjectRecords: Unary function -}
 updateGameObjectRecord :: 

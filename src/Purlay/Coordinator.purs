@@ -12,7 +12,6 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Set as Set
 import Data.String as String
-import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
 import Effect.Aff (Milliseconds(..), Aff)
@@ -26,34 +25,9 @@ import Halogen.HTML as HH
 import Halogen.Query.EventSource as ES.EventSource
 import Purlay.EitherHelpers (mapLeft, (<||>), (<|||>))
 import Purlay.HalogenHelpers (periodicEmitter)
-import Purlay.Lobby as Lobby
 import WSListener (setupWSListener)
 import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket as WS
-
-{-
-
-A phantom Halogen component with the following:
-
-- state
-  - connection to a broadcasting websocket
-  - list of participating peers in "power" order (numeric ids)
-  - recent "power" measurements for all peers)
-  - leader
-
-- actions
-  - new peer
-  - remove peer
-  - change of "power" order
-  - change of object state or variable value
-
-- broadcasting to other peers
-  - change of state: list of new object states and variable values
-    - pulse = empty change of state
-  - my "power" measurement
-  - new leader (sent when another peer has shown more power for over X seconds)
-
--}
 
 pulsePeriod_ms :: Number
 pulsePeriod_ms = 500.0
@@ -66,60 +40,51 @@ checkPowerPeriod_ms = 5000.0
 
 type PeerId = Int
 
+type Input = {my_peerId :: PeerId, ws :: WS.WebSocket}
+
 data Output 
-  = O_Started { my_id :: PeerId, lobby_values :: Lobby.Values }
-  | O_StateChanges (Array StateChange)
-  | O_RemovePeers (Array PeerId)
+  = O_StateChanges StateChanges
+  | O_PeerJoined PeerId
+  | O_PeersGone (Array PeerId)
+  | O_NewLeader PeerId
 
 data Query a
-  = Q_StateChanges (Array StateChange) a
+  = Q_StateChanges StateChanges a
 
 type StateChange = { name :: String, value :: Json }
+type StateChanges = Array StateChange
 
 type State = {
-  m_ws :: Maybe WebSocket
-, m_my_info :: Maybe { peerId :: PeerId, values :: Lobby.Values }
-, peers_order :: Array PeerId
-, peers_alive :: Map.Map PeerId Instant
-, peers_power :: Map.Map PeerId PowerMeasurement
-, peers_values :: Map.Map PeerId Lobby.Values
+  my_peerId       :: PeerId
+, ws              :: WS.WebSocket
+, peers_alive     :: Map.Map PeerId Instant
+, peers_order     :: Array PeerId
+, peers_power     :: Map.Map PeerId PowerMeasurement
 }
 
 type PowerMeasurement = Number -- the larger, the more powerful
 
-showState :: State -> String
-showState {m_my_info, peers_order, peers_alive, peers_power, peers_values} = 
-  show {m_my_info, peers_order, peers_alive, peers_power, peers_values}
-
-i_am_leader :: State -> Boolean
-i_am_leader { m_my_info: Just {peerId}, peers_order } = 
-  case Array.head peers_order of
-    Just leader -> peerId == leader
-    _ -> false
-i_am_leader _ = false
-
-initialState :: State
-initialState = {
-  m_ws: Nothing
-, m_my_info: Nothing
-, peers_order: []
-, peers_alive: Map.empty
-, peers_power: Map.empty
-, peers_values: Map.empty
+initialState :: Input -> State
+initialState  {ws, my_peerId} = {
+  my_peerId
+, ws
+, peers_order:     []
+, peers_alive:     Map.empty
+, peers_power:     Map.empty
 }
 
 data Action
-  = HandleLobby Lobby.Output
+  = Init
   | OutgoingPulse
   | MeasurePower
   | CheckPeerOrder
-  | OutgoingStateChanges (Array StateChange)
+  | OutgoingStateChanges StateChanges
   | ReceiveMessageFromPeer String
   -- the following come from peers, via decoding the above String:
   | IncomingPulse PeerId
   | IncomingPeersOrder (Array PeerId)
-  | IncomingPowerMeasurementAndValues {peerId::PeerId, power::PowerMeasurement, values::Lobby.Values}
-  | IncomingStateChanges (Array StateChange)
+  | IncomingPowerMeasurement {peerId::PeerId, power::PowerMeasurement}
+  | IncomingStateChanges StateChanges
 
 messageToAction :: String -> Either String Action
 messageToAction msg = do
@@ -131,7 +96,7 @@ messageToAction msg = do
     <||> 
     parseNewPeerOrder json 
     <||> 
-    parseNewPowerMeasurement json 
+    parseNewPowerMeasurementAndValues json 
   ) # describeErrs "Failed to decode JSON:\n"
   where
   parsePeerPulse json = do
@@ -143,41 +108,33 @@ messageToAction msg = do
   parseNewPeerOrder json = do
     ({peers_order} :: {peers_order :: Array PeerId}) <- decodeJson json
     pure (IncomingPeersOrder peers_order)
-  parseNewPowerMeasurement json = do
-    ({peerId, power, values} :: 
-      {peerId :: PeerId, power :: PowerMeasurement, values :: Lobby.Values}) <- decodeJson json
-    pure (IncomingPowerMeasurementAndValues {peerId, power,values})
+  parseNewPowerMeasurementAndValues json = do
+    ({peerId, power} :: 
+      {peerId :: PeerId, power :: PowerMeasurement}) <- decodeJson json
+    pure (IncomingPowerMeasurement {peerId, power})
 
   describeErr :: forall b.String -> Either JsonDecodeError b -> Either String b
   describeErr s = mapLeft (\ err -> s <> (printJsonDecodeError err))
   describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
   describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
-_lobby :: SProxy "lobby"
-_lobby = SProxy
-
--- type Slots = 
---   ( lobby :: H.Slot Lobby.Query Lobby.Output Int )
-
-component :: forall input. Lobby.ValuesSpec -> H.Component HH.HTML Query input Output Aff
-component valuesSpec =
+component :: H.Component HH.HTML Query Input Output Aff
+component =
   H.mkComponent
     { 
-      initialState: \a -> initialState
+      initialState
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
-      { handleAction = handleAction, handleQuery = handleQuery }
+      { handleAction = handleAction
+      , handleQuery = handleQuery
+      , initialize = Just Init }
     }
   where
-  render state@{m_my_info: Nothing} =
-    HH.div_ 
-      [
-        HH.slot _lobby 111 (Lobby.component valuesSpec) unit (Just <<< HandleLobby)
-      , HH.text $ showState state
-      ]
-  render state@{m_my_info: Just _} =
-    HH.text $ showState state
+  i_am_leader { my_peerId, peers_order } = Array.head peers_order == Just my_peerId
+
+  render {my_peerId, peers_power} = 
+    HH.div_ [ HH.text $ show {my_peerId, peers_power} ]
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery = case _ of
@@ -186,15 +143,8 @@ component valuesSpec =
       pure Nothing
 
   handleAction = case _ of
-    -- messages from peers:
-    ReceiveMessageFromPeer msg -> do
-      case messageToAction msg of
-        Left err -> liftEffect $ log err
-        Right action -> handleAction action
-
-    -- messages from the lobby:
-    HandleLobby (Lobby.O_Connected ws) -> do
-      H.modify_ $ \st -> st { m_ws = Just ws }
+    Init -> do
+      {ws} <- H.get
       -- start listening to the websocket:
       void $ H.subscribe $
         ES.EventSource.affEventSource \ emitter -> do
@@ -207,95 +157,89 @@ component valuesSpec =
       void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms OutgoingPulse
       void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
 
-    HandleLobby (Lobby.O_SelectedPlayer peerId values) -> do
-      -- set my player to the state:
-      H.modify_ $ _ { m_my_info = Just {peerId, values} }
-      H.raise $ O_Started { my_id: peerId, lobby_values: values }
-
-      -- force a CheckPeerOrder now to sync with others asap:
       handleAction MeasurePower
 
     MeasurePower -> do
+      {ws, my_peerId} <- H.get
       -- liftEffect $ log "MeasurePower"
-      state@{m_ws, m_my_info, peers_power} <- H.get
-      case m_my_info of
-        Nothing -> pure unit
-        Just {peerId,values} -> do
-          power <- liftEffect measurePower
-          liftEffect $ broadcastToPeers m_ws {peerId, power, values}
-          let peers_power2 = Map.insert peerId power peers_power
-          H.modify_ $ _ { peers_power = peers_power2 }
+      power <- liftEffect measurePower
+      liftEffect $ broadcastToPeers ws {peerId:my_peerId, power}
+
+      H.modify_ \s ->  s { peers_power = Map.insert my_peerId power s.peers_power }
       handleAction CheckPeerOrder
 
     CheckPeerOrder -> do
       -- liftEffect $ log "CheckPeerOrder"
-      state@{m_ws, m_my_info, peers_power, peers_order: peers_order1} <- H.get
+      state@{ws, peers_power, peers_order: peers_order1} <- H.get
       when (i_am_leader state || null peers_order1) do
-        let compSnd (Tuple _ p1) (Tuple _ p2) = compare (p1::Number) p2
+        
         let peers_order2 = map fst $ Array.sortBy compSnd $ Map.toUnfoldableUnordered peers_power
-        liftEffect $ log $ "CheckPeerOrder: peers_order2 = " <> show peers_order2
+        -- liftEffect $ log $ "CheckPeerOrder: peers_order2 = " <> show peers_order2
         H.modify_ $ _ { peers_order = peers_order2 }
         when (i_am_leader state) do
-          liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
+          liftEffect $ broadcastToPeers ws {peers_order: peers_order2}
+          case Array.head peers_order2 of
+            Just leader -> H.raise $ O_NewLeader leader
+            _ -> pure unit
 
-    IncomingPowerMeasurementAndValues {peerId, power, values} -> do
-      H.modify_ \s -> s
-        { peers_power  = Map.insert peerId power s.peers_power 
-        , peers_values = Map.insert peerId values s.peers_values
-        }
-      void $ H.query _lobby 111 $ H.tell (Lobby.Q_NewPlayer peerId values)
+    -- messages from peers:
+    ReceiveMessageFromPeer msg -> do
+      case messageToAction msg of
+        Left err -> liftEffect $ log err
+        Right action -> handleAction action
+
+    IncomingPowerMeasurement {peerId, power} -> do
+      {peers_power} <- H.get
+      when (not $ Map.member peerId peers_power) do
+        H.raise $ O_PeerJoined peerId
+      H.modify_ $ _
+        { peers_power = Map.insert peerId power peers_power }
 
     IncomingPeersOrder peers_order -> do
       H.modify_ $ _ {peers_order = peers_order}
+      case Array.head peers_order of
+        Just leader -> H.raise $ O_NewLeader leader
+        _ -> pure unit
+
+    IncomingPulse peerId -> do
+      time <- liftEffect now
+      H.modify_ \s -> s { peers_alive = Map.insert peerId time s.peers_alive }
 
     OutgoingPulse -> do
-      {m_ws, m_my_info, peers_order, peers_alive, peers_power, peers_values} <- H.get
+      {ws, my_peerId, peers_order, peers_alive, peers_power} <- H.get
+
+      liftEffect $ broadcastToPeers ws {pulse: my_peerId}
 
       -- find players who have not sent an update for some time:
       (Milliseconds timeNow) <- unInstant <$> liftEffect now
       let timeCutOff = timeNow - pulseTimeoutMs
       let deadPlayers = Map.filter (olderThan timeCutOff) peers_alive
 
-      if Map.isEmpty deadPlayers then pure unit
-        else do
-          let deadPlayersArray = Set.toUnfoldable $ Map.keys deadPlayers
-          liftEffect $ log $ "deadPlayersArray = " <> show deadPlayersArray
+      when (not $ Map.isEmpty deadPlayers) do
+        let deadPlayersArray = Set.toUnfoldable $ Map.keys deadPlayers
+        liftEffect $ log $ "deadPlayersArray = " <> show deadPlayersArray
 
-          -- tell Lobby and parent to remove these players:
-          void $ H.query _lobby 111 $ H.tell (Lobby.Q_ClearPlayers deadPlayersArray)
-          H.raise $ O_RemovePeers deadPlayersArray
+        -- tell parent about the dead players:
+        H.raise $ O_PeersGone deadPlayersArray
 
-          -- delete the old players from state:
-          let isAlive = not <<< (_ `Map.member` deadPlayers)
-          let peers_order2 = Array.filter isAlive peers_order
-          let peers_alive2 = Map.filterKeys isAlive peers_alive
-          let peers_power2 = Map.filterKeys isAlive peers_power
-          let peers_values2 = Map.filterKeys isAlive peers_values
-          H.modify_ $ _ 
-            { peers_alive  = peers_alive2
-            , peers_power  = peers_power2
-            , peers_values = peers_values2
-            , peers_order  = peers_order2}
+        -- delete the dead players from state:
+        let isAlive = not <<< (_ `Map.member` deadPlayers)
+        let peers_order2 = Array.filter isAlive peers_order
+        let peers_alive2 = Map.filterKeys isAlive peers_alive
+        let peers_power2 = Map.filterKeys isAlive peers_power
+        H.modify_ $ _ 
+          { peers_alive  = peers_alive2
+          , peers_power  = peers_power2
+          , peers_order  = peers_order2}
 
-          -- if I am the leader, tell others about the change of peer order:
-          state <- H.get
-          if not $ i_am_leader state then pure unit
-            else do
-              liftEffect $ broadcastToPeers m_ws {peers_order: peers_order2}
-
-      -- are we in the game play stage?
-      case m_my_info of
-        Nothing -> pure unit
-        Just {peerId} -> do
-          liftEffect $ broadcastToPeers m_ws {pulse: peerId}
-
-    IncomingPulse peerId -> do
-      time <- liftEffect now
-      H.modify_ \s -> s { peers_alive = Map.insert peerId time s.peers_alive }
+        -- if I am the leader, tell others about the change of peer order:
+        state <- H.get
+        when (i_am_leader state) do
+          liftEffect $ broadcastToPeers ws {peers_order: peers_order2}
 
     OutgoingStateChanges changes -> do
-      {m_ws} <- H.get
-      liftEffect $ broadcastToPeers m_ws {changes}
+      {ws} <- H.get
+      liftEffect $ broadcastToPeers ws {changes}
 
     IncomingStateChanges changes -> do
       H.raise $ O_StateChanges changes
@@ -305,10 +249,9 @@ olderThan timeCutOff time =
   let (Milliseconds timeMs) = unInstant time in
   timeMs < timeCutOff
 
-broadcastToPeers :: forall t. EncodeJson t => Maybe WebSocket -> t -> Effect Unit
-broadcastToPeers (Just ws) msg = 
+broadcastToPeers :: forall t. EncodeJson t => WebSocket -> t -> Effect Unit
+broadcastToPeers ws msg = 
   WS.sendString ws $ stringify $ encodeJson msg
-broadcastToPeers _ _ = pure unit
 
 measurePower :: Effect Number
 measurePower = do
@@ -316,3 +259,6 @@ measurePower = do
   let _task = product (1..1000)
   Milliseconds endTime <- unInstant <$> now
   pure $ 1000.0 / (10.0 + endTime - startTime)
+
+compSnd :: forall t. Tuple t Number -> Tuple t Number -> Ordering
+compSnd (Tuple _ p1) (Tuple _ p2) = compare (p1::Number) p2

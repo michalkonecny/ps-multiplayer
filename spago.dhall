@@ -14,6 +14,7 @@ You can edit this file as you like.
   , "halogen-hooks"
   , "now"
   , "psci-support"
+  , "random"
   , "web-socket"
   ]
 , packages = ./packages.dhall
