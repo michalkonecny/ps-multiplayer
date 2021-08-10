@@ -7,9 +7,18 @@
     * [x] MovingPoint
     * [x] GameObject state
     * [x] GameCanvas
-    * [ ] Coordinator
-    * [ ] GameObject actions
-    * [ ] RootComponent
+    * [x] Coordinator
+    * [ ] reactive GameObject with a private state type using continuations
+      * types:
+        * date GameObject action output = GameObject { handleAction :: HandleAction action output, draw :: Effect _ }
+        * newtype HandleAction action output = HandleAction (action -> (GameObject action output, Maybe output))
+      * root component holds 
+        * collection of GameObjects
+    * [ ] separate generic functionality from TigGame as much as possible
+      * Where are the states of GameObjects kept?
+      * option 1: generic rootComponent + injection of specific functionality via types and other parameters
+      * option 2: small TigGame component including generic functionality
+        * standard elements mixed with bespoke elements for slots, state, render, actions and action components
 * Create other simple games
   * [ ] Coin ball
 

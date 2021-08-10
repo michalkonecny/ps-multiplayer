@@ -94,8 +94,6 @@ type Name = String
 defaultName :: Name
 defaultName = "😷"
 
-type PlayerId = Int
-
 initialMPt :: PlayerId -> MovingPoint
 initialMPt player = 
   MPt.constrainPosWrapAround { minX: 0.0, maxX, minY: 0.0, maxY } $
@@ -314,7 +312,7 @@ component =
         _ -> pure unit
 
     FrameTick -> do
-      {m_connection,m_myPiece,itActive,gstate:GState {it},otherPieces} <- H.get
+      {m_connection,gstate:GState {it},otherPieces} <- H.get
       -- are we in the game play stage?
       case m_connection of
         Nothing -> pure unit
