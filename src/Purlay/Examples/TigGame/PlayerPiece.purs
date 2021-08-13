@@ -10,78 +10,71 @@
 -}
 module Purlay.Examples.TigGame.PlayerPiece 
 (
-  PlayerId, Global, Direction, Action, Output, Info, PlayerPiece, new
+  Direction(..), Action(..), ObjInfo, PlayerPiece, new, fromJson
 )
 where
 
-
 import Prelude
 
-import Data.Argonaut (Json, encodeJson)
-import Data.Either (Either(..))
+import Data.Argonaut (Json, JsonDecodeError, decodeJson, encodeJson)
+import Data.Either (Either)
 import Data.Int as Int
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
-import Purlay.GameObject (GameObject(..), HandleAction)
-import Purlay.GameObjectRecord (Consistency(..), Shape(..), GameObjectRecord, initMovingAngle)
-import Purlay.MovingPoint (MovingPoint)
+import Purlay.Coordinator (PeerId)
+import Purlay.Examples.TigGame.Global (GState, PlayerId, initialMPt, maxSpeed, maxX, maxY, playerRadius, slowDownRatio, speedIncrement)
+import Purlay.GameObject (GameObject(..), HandleAction, unGO)
+import Purlay.MovingPoint as MPt
+import Purlay.MovingShape (Consistency(..), MovingShape, Shape(..), initMovingAngle, updateXYState)
+import Purlay.MovingShape as MShp
 
-type PlayerId = Int
-
-type Global = { it :: PlayerId }
-
-data Direction = DirLeft | DirRight | DirUp | DirDown
-
-data Action = TimeTick | PushStart Direction | PushStop Direction | CollidedWith GameObjectRecord | Tig
-
-data Output
-
-type PlayerPiece = GameObject Global Action Output
-
-type Info = {
+type ObjInfo = {
     name :: String
   , playerId :: PlayerId
-  , is_me :: Boolean 
   }
 
+type PlayerPiece = GameObject GState ObjInfo Action
+
+
 type State = {
-  info :: Info
-, rec :: GameObjectRecord
+  info :: ObjInfo
+, mvshape :: MovingShape
 }
 
-new :: 
-  Info ->
-  { xyState :: MovingPoint
-  , radius :: Number } ->
-  PlayerPiece
-new info { xyState, radius } = 
+new :: ObjInfo -> PlayerPiece
+new info@{ playerId } = 
   fromState state
   where
-  state = { info, rec: gameObjectRecord }
+  state = { info, mvshape: gameObjectRecord }
   gameObjectRecord =
     {
-      shape: Ball { radius }
+      shape: Ball { radius: playerRadius }
     , consistency: Solid
     , scaling: 1.0
-    , xyState
+    , xyState: initialMPt playerId
     , angleState: initMovingAngle
     }
 
 fromState :: State -> PlayerPiece
-fromState state =
+fromState state@{ info, mvshape } =
   GameObject {
-    draw: draw state
-  , encodeJson: encodeJson state
-  , decodeJson: decodeJsonOldState state
+    info 
+  , movingShape: mvshape
+  , draw: draw state
+  , encode: encodeJson state
   , handleAction: handleAction state
   }
 
-draw :: State -> Global -> Canvas.Context2D -> Effect Unit
+fromJson :: Json -> Either JsonDecodeError PlayerPiece
+fromJson json = fromState <$> decodeJson json
+
+draw :: State -> PeerId -> GState -> Canvas.Context2D -> Effect Unit
 draw
-  {info: {name, playerId, is_me}
-  , rec: {shape: Ball{radius}, xyState: {pos: {x,y}}}}
+  {info: {name, playerId}
+  , mvshape: {shape: Ball{radius}, xyState: {pos: {x,y}}}}
+  peerId
   { it }
   context
   =
@@ -101,13 +94,45 @@ draw
     | is_me = "bisque"
     | otherwise = "white"
   is_it = playerId == it
+  is_me = playerId == peerId
 
-decodeJsonOldState :: State -> Json -> Either String PlayerPiece
-decodeJsonOldState { info: oldInfo, rec: oldRec } _ =
-  Left "" -- TODO
+data Direction = L | R | U | D
 
-handleAction :: State -> HandleAction Global Action Output
-handleAction state@{info, rec} global action = {
-  newObject: fromState state
-, maybe_output: Nothing
-}
+data Action 
+  = FrameTick
+  | PushStart Direction 
+  | PushStop  Direction 
+  | CheckCollidedWith PlayerPiece
+
+handleAction :: State -> HandleAction GState ObjInfo Action
+handleAction {info, mvshape: old_mvshape} gstate (CheckCollidedWith piece) = {
+    m_object: map (\mvshape -> fromState {info, mvshape}) m_mvshape
+  , m_gstate: Nothing
+  }
+  where
+  m_mvshape = MShp.bounceOff old_mvshape (unGO piece).movingShape
+handleAction {info, mvshape: old_mvshape} gstate action = {
+    m_object: Just $ fromState {info, mvshape: mvshape action}
+  , m_gstate: Nothing
+  }
+  where
+  mvshape FrameTick = 
+    flip updateXYState old_mvshape $
+      MPt.move {slowDownRatio}
+      >>> MPt.constrainSpeed {maxSpeed} 
+      >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
+  mvshape (PushStart d) = 
+    flip updateXYState old_mvshape $
+      case d of
+        L -> MPt.setAccelX (- speedIncrement)
+        R -> MPt.setAccelX (speedIncrement)
+        U -> MPt.setAccelY (- speedIncrement)
+        D -> MPt.setAccelY (speedIncrement)
+  mvshape (PushStop d) = 
+    flip updateXYState old_mvshape $
+      case d of
+        L -> MPt.resetAccelX (- speedIncrement)
+        R -> MPt.resetAccelX (speedIncrement)
+        U -> MPt.resetAccelY (- speedIncrement)
+        D -> MPt.resetAccelY (speedIncrement)
+  mvshape _ = old_mvshape

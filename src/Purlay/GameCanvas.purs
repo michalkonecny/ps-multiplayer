@@ -17,19 +17,19 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.Hooks as Hooks
 import Purlay.Coordinator (PeerId)
-import Purlay.Drawable (draw)
-import Purlay.GameObject (AnyGameObject)
+import Purlay.GameObject (GameObject, unGO)
 
-data Query gstate a = Q_NewState gstate (List (AnyGameObject gstate)) a
+data Query gstate objinfo go_action a = 
+  Q_NewState gstate (List (GameObject gstate objinfo go_action)) a
 {-
   Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
   "PureScript Halogen demo for drawing on a canvas using Hooks"
 -}
 component ::
-  forall input output m gstate.
+  forall input output m gstate objinfo go_action.
   MonadAff m =>
   {my_peerId :: PeerId, initGState :: gstate, width::Number, height::Number} -> 
-  H.Component HH.HTML (Query gstate) input output m
+  H.Component HH.HTML (Query gstate objinfo go_action) input output m
 component {my_peerId, initGState, width, height} =
   Hooks.component \{ queryToken } _ -> Hooks.do
     gobjs /\ modifyGObjs <- Hooks.useState List.Nil
@@ -58,7 +58,7 @@ component {my_peerId, initGState, width, height} =
       where
       drawGOs context = liftEffect $ do
         drawBoard
-        traverse_ (draw {my_peerId, gstate, context}) gobjs
+        traverse_ (\go -> (unGO go).draw my_peerId gstate context) gobjs
         where
         drawBoard = do
           Canvas.setFillStyle context "lightgoldenrodyellow"
