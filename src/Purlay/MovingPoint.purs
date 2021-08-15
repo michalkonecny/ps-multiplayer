@@ -15,6 +15,7 @@ module Purlay.MovingPoint where
 import Prelude
 
 import Data.Int as Int
+import Data.Ord (abs)
 
 type XY = { x :: Number, y :: Number }
 type XYbounds = { minX :: Number, maxX :: Number, minY :: Number, maxY :: Number }
@@ -39,18 +40,25 @@ resetAccelY ddy ps@{accell: a@{y}}
   | y == ddy = ps { accell = a { y = 0.0 } }
   | otherwise = ps
 
-move :: { slowDownRatio :: Number } -> MovingPoint -> MovingPoint
-move { slowDownRatio } mp@{pos: {x,y}, velo: {x:dx, y:dy}, accell: {x:ddx, y:ddy}} = 
+move :: { slowDownRatio :: Number, slowDownThreshold :: Number } -> MovingPoint -> MovingPoint
+move { slowDownRatio, slowDownThreshold } mp@{pos: {x,y}, velo: {x:dx, y:dy}, accell: {x:ddx, y:ddy}} = 
   mp
   { 
     pos = 
       { x: x + dx
       , y: y + dy} 
   , velo = -- gradually slow down:
-      { x: slowDownRatio * (dx + ddx)
-      , y: slowDownRatio * (dy + ddy)
+      { x: slowDown $ (dx + ddx)
+      , y: slowDown $ (dy + ddy)
       }
   }
+  where
+  slowDown v = 
+    if abs v' < slowDownThreshold
+      then 0.0
+      else v'
+    where
+    v' = slowDownRatio * v
 
 constrainSpeed :: { maxSpeed :: Number } -> MovingPoint -> MovingPoint
 constrainSpeed { maxSpeed } mp@{velo: {x:dx,y:dy}} =

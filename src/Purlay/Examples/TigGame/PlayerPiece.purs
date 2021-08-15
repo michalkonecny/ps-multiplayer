@@ -24,7 +24,7 @@ import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
-import Purlay.Examples.TigGame.Global (GState, PlayerId, initialMPt, maxSpeed, maxX, maxY, playerRadius, slowDownRatio, speedIncrement)
+import Purlay.Examples.TigGame.Global (GState, PlayerId, initialMPt, maxSpeed, maxX, maxY, playerRadius, slowDownRatio, slowDownThreshold, speedIncrement)
 import Purlay.GameObject (GameObject(..), HandleAction, unGO)
 import Purlay.MovingPoint as MPt
 import Purlay.MovingShape (Consistency(..), MovingShape, Shape(..), initMovingAngle, updateXYState)
@@ -105,34 +105,34 @@ data Action
   | CheckCollidedWith PlayerPiece
 
 handleAction :: State -> HandleAction GState ObjInfo Action
-handleAction {info, mvshape: old_mvshape} _gstate (CheckCollidedWith piece) = {
-    m_object: map (\mvshape -> fromState {info, mvshape}) m_mvshape
-  , m_gstate: Nothing
-  }
-  where
-  m_mvshape = MShp.bounceOff (unGO piece).movingShape old_mvshape
 handleAction {info, mvshape: old_mvshape} _gstate action = {
-    m_object: Just $ fromState {info, mvshape: mvshape action}
+    m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   , m_gstate: Nothing
   }
   where
-  mvshape FrameTick = 
-    flip updateXYState old_mvshape $
-      MPt.move {slowDownRatio}
-      >>> MPt.constrainSpeed {maxSpeed} 
-      >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
-  mvshape (PushStart d) = 
+  m_mvshape FrameTick =
+    if mvshape.xyState == old_mvshape.xyState
+      then Nothing
+      else Just mvshape
+    where
+    mvshape =
+      flip updateXYState old_mvshape $
+        MPt.move {slowDownRatio, slowDownThreshold}
+        >>> MPt.constrainSpeed {maxSpeed} 
+        >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
+  m_mvshape (PushStart d) = Just $
     flip updateXYState old_mvshape $
       case d of
         L -> MPt.setAccelX (- speedIncrement)
         R -> MPt.setAccelX (speedIncrement)
         U -> MPt.setAccelY (- speedIncrement)
         D -> MPt.setAccelY (speedIncrement)
-  mvshape (PushStop d) = 
+  m_mvshape (PushStop d) = Just $
     flip updateXYState old_mvshape $
       case d of
         L -> MPt.resetAccelX (- speedIncrement)
         R -> MPt.resetAccelX (speedIncrement)
         U -> MPt.resetAccelY (- speedIncrement)
         D -> MPt.resetAccelY (speedIncrement)
-  mvshape _ = old_mvshape
+  m_mvshape (CheckCollidedWith piece) =
+    MShp.bounceOff (unGO piece).movingShape old_mvshape

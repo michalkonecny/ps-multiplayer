@@ -36,6 +36,9 @@ maxSpeed = 20.0
 slowDownRatio :: Number
 slowDownRatio = 0.9
 
+slowDownThreshold :: Number
+slowDownThreshold = 0.01
+
 speedIncrement :: Number
 speedIncrement = 2.0
 
@@ -62,7 +65,7 @@ initialMPt player =
   { pos:
     { x: playerN*107.0, 
       y: playerN*107.0 }
-  , velo: { x: 0.0, y: 0.0 }
+  , velo: { x: slowDownThreshold, y: 0.0 } -- if set to 0, the piece will not show until moved
   , accell: { x: 0.0, y: 0.0 }
   }
   where

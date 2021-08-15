@@ -207,7 +207,13 @@ component =
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp
 
     FromCoordinator (Coordinator.O_NewLeader _) -> pure unit
-    FromCoordinator (Coordinator.O_PeerJoined _) -> pure unit
+    FromCoordinator (Coordinator.O_PeerJoined _) -> do
+      -- let them know about our player:
+      {m_connection,m_myPiece} <- H.get
+      case m_connection, m_myPiece of
+        Just {my_peerId}, Just myPiece -> do
+          broadcastAction $ SetPlayer my_peerId myPiece
+        _, _ -> pure unit
     FromCoordinator (Coordinator.O_PeersGone peers) -> do
       H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
       updateCanvas
@@ -290,6 +296,7 @@ component =
           when iAmNewIt do
             -- there is no "it" and we are the player with lowest number, thus we should be it!
             H.modify_ $ updateGState $ _ { it = my_peerId }
+            updateCanvas
             broadcastAction $ SetIt my_peerId
 
   playerAction p_action = do
