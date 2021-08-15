@@ -221,12 +221,27 @@ component =
         Right actions -> sequence_ $ map handleAction actions
 
     SetPlayer peerId playerPiece -> do
+      {m_connection,m_myPiece,gstate,otherPieces} <- H.get
+
+      -- update and redraw piece
       H.modify_ $ \ s -> s { otherPieces = Map.insert peerId playerPiece s.otherPieces }
       updateCanvas
-      -- let Lobby know:
-      let { name } = (unGO playerPiece).info
-      let values = Map.singleton "name" name
-      void $ H.query _lobby _lobbyN $ H.tell (Lobby.Q_NewPlayer peerId values)
+
+      -- have I joined the game?
+      case m_connection, m_myPiece of
+        Just {my_peerId}, Just myPiece -> do -- joined already
+
+          -- check for collision
+          let collisionCheckResult = (unGO myPiece).handleAction gstate (PlayerPiece.CheckCollidedWith playerPiece)
+          case collisionCheckResult of
+            { m_object: Just myPiece' } ->
+                handleCollisionResult my_peerId peerId myPiece'
+            _ -> pure unit      
+
+        _, _ -> do --  not joined yet, let Lobby know of the player:
+          let { name } = (unGO playerPiece).info
+          let values = Map.singleton "name" name
+          void $ H.query _lobby _lobbyN $ H.tell (Lobby.Q_NewPlayer peerId values)
 
     SetIt it -> do
       H.modify_ $ updateGState (_ { it = it, itActive = false } )
@@ -278,40 +293,47 @@ component =
             broadcastAction $ SetIt my_peerId
 
   playerAction p_action = do
-    {m_connection,m_myPiece,gstate:gstate@{it,itActive},otherPieces} <- H.get
+    {m_connection,m_myPiece,gstate,otherPieces} <- H.get
     case m_connection, m_myPiece of
-      Just {my_peerId}, Just playerPiece -> do
+      Just {my_peerId}, Just playerPiece1 -> do
         -- take the player action:
-        let { m_object: m_newPlayerPiece } = (unGO playerPiece).handleAction gstate p_action
-        case m_newPlayerPiece of
-          Nothing -> pure unit
+        let { m_object: m_newPlayerPiece } = (unGO playerPiece1).handleAction gstate p_action
+        -- if my piece changed, take note of it:
+        playerPiece2 <- case m_newPlayerPiece of
+          Nothing -> pure playerPiece1
           Just newPlayerPiece -> do
             -- update my piece locally:
             H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
             updateCanvas
             -- update others of my move:
             broadcastAction $ SetPlayer my_peerId newPlayerPiece
+            pure newPlayerPiece
 
-            -- check for a collision:
-            let m_collisionResult = getCollision my_peerId gstate newPlayerPiece otherPieces
+        -- check for a collision:
+        let m_collisionResult = getCollision my_peerId gstate playerPiece2 otherPieces
           
-            case m_collisionResult of
-              Nothing -> pure unit
-              Just (Tuple collidedPlayer newPlayerPiece2) -> do -- collision ocurred, bouncing off another piece:
-                -- update my piece locally:
-                H.modify_ $ _ {m_myPiece = Just newPlayerPiece2 }
-                updateCanvas
-                -- send my new position to peers:
-                broadcastAction $ SetPlayer my_peerId newPlayerPiece2
-
-                -- if I am it, tig them!
-                when (my_peerId == it && itActive) do
-                  -- gotcha! update it locally:
-                  H.modify_ $ updateGState $ _ { it = collidedPlayer }
-                  updateCanvas
-                  -- and announce new "it":
-                  broadcastAction $ SetIt collidedPlayer
+        case m_collisionResult of
+          Nothing -> pure unit
+          Just (Tuple collidedPlayer playerPiece3) -> 
+            handleCollisionResult my_peerId collidedPlayer playerPiece3
       _,_ -> pure unit
+
+  handleCollisionResult my_peerId collidedPlayer playerPiece' =
+    do -- collision ocurred, bouncing off another piece
+    {gstate:{it,itActive}} <- H.get
+    -- update my piece locally:
+    H.modify_ $ _ {m_myPiece = Just playerPiece' }
+    updateCanvas
+    -- DO NOT send my new position to peers:
+    -- broadcastAction $ SetPlayer my_peerId playerPiece3
+
+    -- if I am it, tig them!
+    when (my_peerId == it && itActive) do
+      -- gotcha! update it locally:
+      H.modify_ $ updateGState $ _ { it = collidedPlayer }
+      updateCanvas
+      -- and announce new "it":
+      broadcastAction $ SetIt collidedPlayer
 
 getCollision :: PeerId -> GState -> PlayerPiece -> PlayerPieces -> Maybe (Tuple PeerId PlayerPiece)
 getCollision peer1 gstate object1 gameObjects =

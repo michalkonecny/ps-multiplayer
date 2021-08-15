@@ -105,13 +105,13 @@ data Action
   | CheckCollidedWith PlayerPiece
 
 handleAction :: State -> HandleAction GState ObjInfo Action
-handleAction {info, mvshape: old_mvshape} gstate (CheckCollidedWith piece) = {
+handleAction {info, mvshape: old_mvshape} _gstate (CheckCollidedWith piece) = {
     m_object: map (\mvshape -> fromState {info, mvshape}) m_mvshape
   , m_gstate: Nothing
   }
   where
-  m_mvshape = MShp.bounceOff old_mvshape (unGO piece).movingShape
-handleAction {info, mvshape: old_mvshape} gstate action = {
+  m_mvshape = MShp.bounceOff (unGO piece).movingShape old_mvshape
+handleAction {info, mvshape: old_mvshape} _gstate action = {
     m_object: Just $ fromState {info, mvshape: mvshape action}
   , m_gstate: Nothing
   }
