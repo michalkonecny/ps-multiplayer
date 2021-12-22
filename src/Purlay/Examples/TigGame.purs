@@ -25,7 +25,6 @@ import Data.List (List)
 import Data.List as List
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Symbol (SProxy(..))
 import Data.Traversable (sequence, sequence_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -48,6 +47,7 @@ import Purlay.GameObject (unGO)
 import Purlay.HalogenHelpers (periodicEmitter, subscribeToKeyDownUp)
 import Purlay.Lobby as Lobby
 import Purlay.WSConnector as WSConnector
+import Type.Proxy (Proxy(..))
 import Web.Socket.WebSocket as WS
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
 import Web.UIEvent.KeyboardEvent as KE
@@ -113,26 +113,17 @@ actionToChanges (SetIt it) = [{name: "it", value: encodeJson it}]
 actionToChanges _ = []
 
 -- wiring for sub-components:
+_wsconnector = Proxy :: Proxy "wsconnector"
+_wsconnectorN = 0 :: Int
 
-_wsconnector :: SProxy "wsconnector"
-_wsconnector = SProxy
-_wsconnectorN :: Int
-_wsconnectorN = 0
+_coordinator = Proxy :: Proxy "coordinator"
+_coordinatorN = 1 :: Int
 
-_coordinator :: SProxy "coordinator"
-_coordinator = SProxy
-_coordinatorN :: Int
-_coordinatorN = 1
+_lobby = Proxy :: Proxy "lobby"
+_lobbyN = 2 :: Int
 
-_lobby :: SProxy "lobby"
-_lobby = SProxy
-_lobbyN :: Int
-_lobbyN = 2
-
-_canvas :: SProxy "canvas"
-_canvas = SProxy
-_canvasN :: Int
-_canvasN = 3
+_canvas = Proxy :: Proxy "canvas"
+_canvasN = 3 :: Int
 
 type Slots = ( 
   wsconnector :: forall query . H.Slot query WSConnector.Output Int
@@ -143,7 +134,7 @@ type Slots = (
 
 broadcastAction :: forall output. Action -> H.HalogenM GameState Action Slots output Aff Unit
 broadcastAction action =
-  void $ H.query _coordinator _coordinatorN $ H.tell $
+  void $ H.tell _coordinator _coordinatorN $
       Coordinator.Q_StateChanges $ actionToChanges action
 
 updateCanvas :: forall output. H.HalogenM GameState Action Slots output Aff Unit
@@ -152,14 +143,14 @@ updateCanvas = do
   case m_myPiece of
     Just myPiece -> do
       let pieces = List.Cons myPiece $ Map.values otherPieces
-      void $ H.query _canvas _canvasN $ H.tell (GameCanvas.Q_NewState gstate pieces)
+      void $ H.tell _canvas _canvasN $ GameCanvas.Q_NewState gstate pieces
     _ -> pure unit
 
-component :: forall input output query. H.Component HH.HTML query input output Aff
+component :: forall input output query. H.Component query input output Aff
 component =
   H.mkComponent
     { 
-      initialState: \a -> initialGameState
+      initialState: \_ -> initialGameState
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
@@ -168,20 +159,21 @@ component =
   where
   render {m_connection: Nothing} =
     HH.div_ $ sb do
-      ae$ HH.slot _wsconnector _wsconnectorN WSConnector.component unit (Just <<< FromWSConnector)
+      ae$ HH.slot _wsconnector _wsconnectorN WSConnector.component unit FromWSConnector
   render {m_connection: Just {ws, my_peerId}, m_myPiece} =
     HH.div_ $ sb do
       ae$ HH.slot _coordinator _coordinatorN 
-          Coordinator.component {ws, my_peerId} (Just <<< FromCoordinator)
+          Coordinator.component {ws, my_peerId} FromCoordinator
       ae$ HH.br_
       case m_myPiece of
         Nothing ->
           ae$ HH.slot _lobby _lobbyN 
-              Lobby.component {valuesSpec: tigLobbySpec, my_playerId: my_peerId} (Just <<< FromLobby)
+              Lobby.component {valuesSpec: tigLobbySpec, my_playerId: my_peerId} FromLobby
         Just _ ->
           ae$ HH.slot _canvas _canvasN 
-              (GameCanvas.component {my_peerId, initGState, width: maxX, height: maxY}) unit Just
+              (GameCanvas.component {my_peerId, initGState, width: maxX, height: maxY}) unit identity
 
+  handleAction :: Action -> H.HalogenM GameState Action Slots output Aff Unit
   handleAction = case _ of
     -- WSConnector tells us we are connected:
     FromWSConnector (WSConnector.O_Connected ws) -> do
@@ -201,7 +193,7 @@ component =
         _ -> pure unit
 
       -- start frame ticker:
-      void $ H.subscribe $ periodicEmitter "FrameTick" tickPeriod_ms FrameTick
+      void $ H.subscribe =<< periodicEmitter "FrameTick" (Milliseconds tickPeriod_ms) FrameTick
 
       -- subscribe to keyboard events:
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp
@@ -218,7 +210,7 @@ component =
       H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
       updateCanvas
       -- let Lobby know:
-      void $ H.query _lobby _lobbyN $ H.tell (Lobby.Q_ClearPlayers peers)
+      void $ H.tell _lobby _lobbyN $ Lobby.Q_ClearPlayers peers
 
     -- Coordinator relayes messages from peer players:
     FromCoordinator (Coordinator.O_StateChanges changes) -> do
@@ -227,7 +219,7 @@ component =
         Right actions -> sequence_ $ map handleAction actions
 
     SetPlayer peerId playerPiece -> do
-      {m_connection,m_myPiece,gstate,otherPieces} <- H.get
+      {m_connection,m_myPiece,gstate} <- H.get
 
       -- update and redraw piece
       H.modify_ $ \ s -> s { otherPieces = Map.insert peerId playerPiece s.otherPieces }
@@ -247,7 +239,7 @@ component =
         _, _ -> do --  not joined yet, let Lobby know of the player:
           let { name } = (unGO playerPiece).info
           let values = Map.singleton "name" name
-          void $ H.query _lobby _lobbyN $ H.tell (Lobby.Q_NewPlayer peerId values)
+          void $ H.tell _lobby _lobbyN $ Lobby.Q_NewPlayer peerId values
 
     SetIt it -> do
       H.modify_ $ updateGState (_ { it = it, itActive = false } )
@@ -343,7 +335,7 @@ component =
       broadcastAction $ SetIt collidedPlayer
 
 getCollision :: PeerId -> GState -> PlayerPiece -> PlayerPieces -> Maybe (Tuple PeerId PlayerPiece)
-getCollision peer1 gstate object1 gameObjects =
+getCollision _peer1 gstate object1 gameObjects =
   findCollision (Map.toUnfoldable gameObjects :: List _)
   where
   findCollision List.Nil = Nothing

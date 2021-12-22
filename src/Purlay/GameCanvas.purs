@@ -29,7 +29,7 @@ component ::
   forall input output m gstate objinfo go_action.
   MonadAff m =>
   {my_peerId :: PeerId, initGState :: gstate, width::Number, height::Number} -> 
-  H.Component HH.HTML (Query gstate objinfo go_action) input output m
+  H.Component (Query gstate objinfo go_action) input output m
 component {my_peerId, initGState, width, height} =
   Hooks.component \{ queryToken } _ -> Hooks.do
     gobjs /\ modifyGObjs <- Hooks.useState List.Nil
@@ -42,7 +42,7 @@ component {my_peerId, initGState, width, height} =
     drawOnCanvas gobjs gstate
     Hooks.pure $ 
       HH.canvas 
-        [ HP.id_ "canvas"
+        [ HP.id "canvas"
         , HP.width  $ Int.ceil width
         , HP.height $ Int.ceil height
         ]

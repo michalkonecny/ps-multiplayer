@@ -19,6 +19,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as String
 import Effect.Aff (Aff)
 import Effect.Aff as Aff
+import Effect.Console (log)
 import Halogen (liftAff, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
@@ -45,11 +46,11 @@ data Action =
     Init
   | SetWSURL String
 
-component :: forall query input. H.Component HH.HTML query input Output Aff
+component :: forall query input. H.Component query input Output Aff
 component =
   H.mkComponent
     { 
-      initialState: \a -> initialState
+      initialState: \_ -> initialState
     , render
     , eval: H.mkEval $ H.defaultEval 
       -- { handleAction = handleAction, initialize = Just Init }
@@ -67,7 +68,7 @@ component =
             ae$ HH.text "Enter broadcast server web-socket URL: ws://"
             ae$ HH.input $ sb do
               ae$ HP.value (String.drop 5 urlInput)
-              ae$ HE.onValueChange (Just <<< SetWSURL <<< ("ws://" <> _))
+              ae$ HE.onValueChange (SetWSURL <<< ("ws://" <> _))
         ae$ HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]
 
   handleAction = case _ of
@@ -84,6 +85,7 @@ component =
           H.modify_ \st -> 
             st { urlInput = wsURL, maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
         else do
+          liftEffect $ log "WSConnector: O_Connected..."
           H.raise (O_Connected ws)
 
   getWSURL = do

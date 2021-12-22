@@ -14,17 +14,15 @@ import Data.Set as Set
 import Data.String as String
 import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
-import Effect.Aff (Milliseconds(..), Aff)
-import Effect.Aff as Aff
+import Effect.Aff (Aff, Milliseconds(..))
 import Effect.Console (log)
-import Effect.Exception (error)
 import Effect.Now (now)
 import Halogen (liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.Query.EventSource as ES.EventSource
+import Halogen.Subscription as HS
 import Purlay.EitherHelpers (mapLeft, (<||>), (<|||>))
-import Purlay.HalogenHelpers (periodicEmitter)
+import Purlay.HalogenHelpers (affEmitter, periodicEmitter)
 import WSListener (setupWSListener)
 import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket as WS
@@ -118,7 +116,7 @@ messageToAction msg = do
   describeErrs :: forall b.String -> Either (Array JsonDecodeError) b -> Either String b
   describeErrs s = mapLeft (\ errs -> s <> String.joinWith "\n" (map printJsonDecodeError errs))
 
-component :: H.Component HH.HTML Query Input Output Aff
+component :: H.Component Query Input Output Aff
 component =
   H.mkComponent
     { 
@@ -146,16 +144,12 @@ component =
     Init -> do
       {ws} <- H.get
       -- start listening to the websocket:
-      void $ H.subscribe $
-        ES.EventSource.affEventSource \ emitter -> do
-          fiber <- Aff.forkAff $ do
-            setupWSListener ws (\msg -> ES.EventSource.emit emitter (ReceiveMessageFromPeer msg))
-          pure $ ES.EventSource.Finalizer do
-            Aff.killFiber (error "websocket: Event source finalized") fiber
-
+      emitter <- affEmitter $ \listener ->
+        setupWSListener ws (\msg -> H.liftEffect $ HS.notify listener (ReceiveMessageFromPeer msg))
+      void $ H.subscribe emitter
       -- start periodic emitters for Pulse and MeasurePower actions:
-      void $ H.subscribe $ periodicEmitter "Pulse" pulsePeriod_ms OutgoingPulse
-      void $ H.subscribe $ periodicEmitter "MeasurePower" checkPowerPeriod_ms MeasurePower
+      void $ H.subscribe =<< periodicEmitter "Pulse" (Milliseconds pulsePeriod_ms) OutgoingPulse
+      void $ H.subscribe =<< periodicEmitter "MeasurePower" (Milliseconds checkPowerPeriod_ms) MeasurePower
 
       handleAction MeasurePower
 

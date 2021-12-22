@@ -33,11 +33,10 @@ import Web.Socket.Event.EventTypes as WSET
 import Web.Socket.Event.MessageEvent as ME
 import Web.Socket.WebSocket as WS
 
--- Setup a listener on the given web socket that sends all messages to the given Halogen IO as a `ReceiveMessage' query.
--- setupWSListener :: forall output. WS.WebSocket -> HA.HalogenIO RootQuery output Aff -> Aff Unit
+-- Setup a listener on the given web socket that sends all messages to the given handler
 setupWSListener :: forall a. WS.WebSocket -> (String -> Aff a) -> Aff Unit
-setupWSListener ws query =
-  CR.runProcess (wsProducer ws CR.$$ wsConsumer query)
+setupWSListener ws handler =
+  CR.runProcess (wsProducer ws CR.$$ wsConsumer handler)
 
 -- A producer coroutine that emits messages that arrive from the websocket.
 wsProducer :: WS.WebSocket -> CR.Producer String Aff Unit
@@ -57,10 +56,8 @@ wsProducer ws =
     readHelper read =
       either (const Nothing) Just <<< runExcept <<< read <<< unsafeToForeign
 
--- A consumer coroutine that takes the `query` function from our component IO
--- record and sends `ReceiveMessage` queries in when it receives inputs from the
--- producer.
+-- A consumer coroutine that executes the `handler` function 
 wsConsumer :: forall a . (String -> Aff a) -> CR.Consumer String Aff Unit
-wsConsumer query = CR.consumer \msg -> do
-  void $ query msg
+wsConsumer handler = CR.consumer \msg -> do
+  void $ handler msg
   pure Nothing

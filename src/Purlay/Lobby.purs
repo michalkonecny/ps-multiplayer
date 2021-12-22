@@ -74,7 +74,7 @@ data Action =
     SetValue Key Value
   | Play
 
-component :: H.Component HH.HTML Query Input Output Aff
+component :: H.Component Query Input Output Aff
 component =
   H.mkComponent
     { 
@@ -99,10 +99,10 @@ component =
         ae$ HH.button
           (sb do 
             ae$ HP.title label
-            ae$ HE.onClick \_ -> Just Play)
+            ae$ HE.onClick \_ -> Play)
           [ HH.text label ]
       where
-      player = (fromMaybe 0 $ map (_.key) (Map.findMax players)) + 1
+      _player = (fromMaybe 0 $ map (_.key) (Map.findMax players)) + 1
       label = "Play"
     chooseValues =
       HH.table [HP.class_ (ClassName "lobby-values")] $ 
@@ -120,17 +120,17 @@ component =
             ae$ HH.input $ sb do 
               ae$ HP.value (fromMaybe "" $ Map.lookup key values)
               ae$ HP.attr (H.AttrName "size") $ show maxLength
-              ae$ HE.onValueInput (Just <<< SetValue key)
+              ae$ HE.onValueInput (SetValue key)
           aes$ map playerCell playersArray
         where
         playerCell (Tuple _ pvalues) =
           HH.td_ [HH.text $ fromMaybe "" $ Map.lookup key pvalues]
       playersArray = Map.toUnfoldable players
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
-  handleQuery (Q_NewPlayer player values a) = do
+  handleQuery (Q_NewPlayer player values _a) = do
     H.modify_ \st -> st { players = Map.insert player values st.players }
     pure Nothing
-  handleQuery (Q_ClearPlayers deadPlayers a) = do
+  handleQuery (Q_ClearPlayers deadPlayers _a) = do
     liftEffect $ log $ "ClearPlayers: deadPlayers = " <> (show deadPlayers) 
     let removePlayers mp = foldl (flip Map.delete) mp deadPlayers
     H.modify_ \st -> st { players = removePlayers st.players }
