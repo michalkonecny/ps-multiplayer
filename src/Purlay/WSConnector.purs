@@ -73,8 +73,8 @@ component =
 
   handleAction = case _ of
     Init -> do
-      wsURL <- liftEffect getWSURL
       liftAff $ Aff.delay (Aff.Milliseconds 500.0)
+      wsURL <- liftEffect getWSURL
       handleAction $ SetWSURL wsURL
     SetWSURL wsURL -> do
       ws <- liftEffect $ WS.create wsURL []
@@ -90,7 +90,9 @@ component =
 
   getWSURL = do
     loc <- location =<< window
-    host <- hostname loc
-    p <- port loc
+    host_pre <- hostname loc
+    let host = if host_pre == "" then "localhost" else host_pre
+    p_pre <- port loc
+    let p = if p_pre == "" then "3000" else p_pre
     let prot = if host == "game-ws-broadcast.herokuapp.com" then "wss://" else "ws://"
     pure $ prot <> host <> ":" <> p
