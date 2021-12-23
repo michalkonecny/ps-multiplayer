@@ -15,9 +15,10 @@ module Purlay.WSConnector where
 import Prelude
 
 import Control.SequenceBuildMonad (ae, sb)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as String
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, attempt)
 import Effect.Aff as Aff
 import Effect.Console (log)
 import Halogen (liftAff, liftEffect)
@@ -40,7 +41,7 @@ type State = {
 }
 
 initialState :: State
-initialState = { urlInput: "ws://localhost:3000", maybeMsg: Nothing }
+initialState = { urlInput: "", maybeMsg: Nothing }
 
 data Action =
     Init
@@ -75,18 +76,24 @@ component =
     Init -> do
       liftAff $ Aff.delay (Aff.Milliseconds 500.0)
       wsURL <- liftEffect getWSURL
+      H.modify_ $ _ { urlInput = wsURL }
       handleAction $ SetWSURL wsURL
     SetWSURL wsURL -> do
-      ws <- liftEffect $ WS.create wsURL []
-      liftAff $ Aff.delay (Aff.Milliseconds 100.0) -- allow ws to initialise
-      rs <- liftEffect $ WS.readyState ws
-      if rs /= ReadyState.Open
-        then do
-          H.modify_ \st -> 
-            st { urlInput = wsURL, maybeMsg = Just ("Failed to open web-socket at " <> wsURL) }
-        else do
-          liftEffect $ log "WSConnector: O_Connected..."
-          H.raise (O_Connected ws)
+      ws_or_error <- liftAff $ attempt $ do
+        liftEffect $ WS.create wsURL []
+      let reportOpenFail = 
+            H.modify_ $ _ 
+              { urlInput = wsURL
+              , maybeMsg = Just ("Failed to open web-socket at " <> wsURL) 
+              }
+      case ws_or_error of
+        Left _ -> reportOpenFail
+        Right ws -> do
+          liftAff $ Aff.delay (Aff.Milliseconds 100.0) -- allow ws to initialise
+          rs <- liftEffect $ WS.readyState ws
+          if rs /= ReadyState.Open
+            then reportOpenFail
+            else H.raise (O_Connected ws)
 
   getWSURL = do
     loc <- location =<< window

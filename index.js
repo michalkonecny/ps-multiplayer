@@ -4174,7 +4174,8 @@ var PS = {};
       MonadThrow0: function () {
           return monadThrowAff;
       }
-  };                                                            
+  };
+  var attempt = Control_Monad_Error_Class["try"](monadErrorAff);
   var runAff = function (k) {
       return function (aff) {
           return launchAff(Control_Bind.bindFlipped(bindAff)((function () {
@@ -4236,6 +4237,7 @@ var PS = {};
   exports["runAff_"] = runAff_;
   exports["forkAff"] = forkAff;
   exports["suspendAff"] = suspendAff;
+  exports["attempt"] = attempt;
   exports["delay"] = delay;
   exports["finally"] = $$finally;
   exports["killFiber"] = killFiber;
@@ -15509,6 +15511,7 @@ var PS = {};
   var Control_Bind = $PS["Control.Bind"];
   var Control_Monad_State_Class = $PS["Control.Monad.State.Class"];
   var Control_SequenceBuildMonad = $PS["Control.SequenceBuildMonad"];
+  var Data_Either = $PS["Data.Either"];
   var Data_Eq = $PS["Data.Eq"];
   var Data_Maybe = $PS["Data.Maybe"];
   var Data_Monoid = $PS["Data.Monoid"];
@@ -15517,7 +15520,6 @@ var PS = {};
   var Effect_Aff = $PS["Effect.Aff"];
   var Effect_Aff_Class = $PS["Effect.Aff.Class"];
   var Effect_Class = $PS["Effect.Class"];
-  var Effect_Console = $PS["Effect.Console"];
   var Halogen_Component = $PS["Halogen.Component"];
   var Halogen_HTML_Core = $PS["Halogen.HTML.Core"];
   var Halogen_HTML_Elements = $PS["Halogen.HTML.Elements"];
@@ -15555,17 +15557,17 @@ var PS = {};
       return SetWSURL;
   })();
   var initialState = {
-      urlInput: "ws://localhost:3000",
+      urlInput: "",
       maybeMsg: Data_Maybe.Nothing.value
   };
   var component = (function () {
       var render = function (v) {
           var enterWSURL = Halogen_HTML_Elements.div_(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.div_(Control_SequenceBuildMonad.sb(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.span_(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Core.text("Enter broadcast server web-socket URL: ws://")))(function () {
               return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.input(Control_SequenceBuildMonad.sb(Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Properties.value(Data_String_CodePoints.drop(5)(v.urlInput))))(function () {
-                  return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Events.onValueChange(function ($18) {
+                  return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Events.onValueChange(function ($25) {
                       return SetWSURL.create((function (v1) {
                           return "ws://" + v1;
-                      })($18));
+                      })($25));
                   }));
               }))));
           }))))))))(function () {
@@ -15577,23 +15579,23 @@ var PS = {};
           var loc = Control_Bind.bindFlipped(Effect.bindEffect)(Web_HTML_Window.location)(Web_HTML.window)();
           var host_pre = Web_HTML_Location.hostname(loc)();
           var host = (function () {
-              var $9 = host_pre === "";
-              if ($9) {
-                  return "localhost";
+              var $10 = host_pre === "";
+              if ($10) {
+                  return "";
               };
               return host_pre;
           })();
           var p_pre = Web_HTML_Location.port(loc)();
           var p = (function () {
-              var $10 = p_pre === "";
-              if ($10) {
+              var $11 = p_pre === "";
+              if ($11) {
                   return "3000";
               };
               return p_pre;
           })();
           var prot = (function () {
-              var $11 = host === "game-ws-broadcast.herokuapp.com";
-              if ($11) {
+              var $12 = host === "game-ws-broadcast.herokuapp.com";
+              if ($12) {
                   return "wss://";
               };
               return "ws://";
@@ -15604,36 +15606,52 @@ var PS = {};
           if (v instanceof Init) {
               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(500.0)))(function () {
                   return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(getWSURL))(function (wsURL) {
-                      return handleAction(new SetWSURL(wsURL));
-                  });
-              });
-          };
-          if (v instanceof SetWSURL) {
-              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Web_Socket_WebSocket.create(v.value0)([  ])))(function (ws) {
-                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(100.0)))(function () {
-                      return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Web_Socket_WebSocket.readyState(ws)))(function (rs) {
-                          var $13 = Data_Eq.notEq(Web_Socket_ReadyState.eqReadyState)(rs)(Web_Socket_ReadyState.Open.value);
-                          if ($13) {
-                              return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (st) {
-                                  var $14 = {};
-                                  for (var $15 in st) {
-                                      if ({}.hasOwnProperty.call(st, $15)) {
-                                          $14[$15] = st[$15];
-                                      };
-                                  };
-                                  $14.urlInput = v.value0;
-                                  $14.maybeMsg = new Data_Maybe.Just("Failed to open web-socket at " + v.value0);
-                                  return $14;
-                              });
+                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
+                          var $14 = {};
+                          for (var $15 in v1) {
+                              if ({}.hasOwnProperty.call(v1, $15)) {
+                                  $14[$15] = v1[$15];
+                              };
                           };
-                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Console.log("WSConnector: O_Connected...")))(function () {
-                              return Halogen_Query_HalogenM.raise(new O_Connected(ws));
-                          });
+                          $14.urlInput = wsURL;
+                          return $14;
+                      }))(function () {
+                          return handleAction(new SetWSURL(wsURL));
                       });
                   });
               });
           };
-          throw new Error("Failed pattern match at Purlay.WSConnector (line 74, column 18 - line 89, column 35): " + [ v.constructor.name ]);
+          if (v instanceof SetWSURL) {
+              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.attempt(Effect_Class.liftEffect(Effect_Aff.monadEffectAff)(Web_Socket_WebSocket.create(v.value0)([  ])))))(function (ws_or_error) {
+                  var reportOpenFail = Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
+                      var $17 = {};
+                      for (var $18 in v1) {
+                          if ({}.hasOwnProperty.call(v1, $18)) {
+                              $17[$18] = v1[$18];
+                          };
+                      };
+                      $17.urlInput = v.value0;
+                      $17.maybeMsg = new Data_Maybe.Just("Failed to open web-socket at " + v.value0);
+                      return $17;
+                  });
+                  if (ws_or_error instanceof Data_Either.Left) {
+                      return reportOpenFail;
+                  };
+                  if (ws_or_error instanceof Data_Either.Right) {
+                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(100.0)))(function () {
+                          return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Web_Socket_WebSocket.readyState(ws_or_error.value0)))(function (rs) {
+                              var $22 = Data_Eq.notEq(Web_Socket_ReadyState.eqReadyState)(rs)(Web_Socket_ReadyState.Open.value);
+                              if ($22) {
+                                  return reportOpenFail;
+                              };
+                              return Halogen_Query_HalogenM.raise(new O_Connected(ws_or_error.value0));
+                          });
+                      });
+                  };
+                  throw new Error("Failed pattern match at Purlay.WSConnector (line 89, column 7 - line 96, column 42): " + [ ws_or_error.constructor.name ]);
+              });
+          };
+          throw new Error("Failed pattern match at Purlay.WSConnector (line 75, column 18 - line 96, column 42): " + [ v.constructor.name ]);
       };
       return Halogen_Component.mkComponent({
           initialState: function (v) {
