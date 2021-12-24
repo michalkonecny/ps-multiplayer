@@ -20,7 +20,6 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String as String
 import Effect.Aff (Aff, attempt)
 import Effect.Aff as Aff
-import Effect.Console (log)
 import Halogen (liftAff, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH

@@ -45,10 +45,9 @@ type State = {
 
 new :: ObjInfo -> PlayerPiece
 new info@{ playerId } = 
-  fromState state
+  fromState { info, mvshape }
   where
-  state = { info, mvshape: gameObjectRecord }
-  gameObjectRecord =
+  mvshape =
     {
       shape: Ball { radius: playerRadius }
     , consistency: Solid
