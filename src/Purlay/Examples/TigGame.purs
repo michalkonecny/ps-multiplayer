@@ -230,7 +230,9 @@ component =
         Just {my_peerId}, Just myPiece -> do -- joined already
 
           -- check for collision
-          let collisionCheckResult = (unGO myPiece).handleAction gstate (PlayerPiece.CheckCollidedWith playerPiece)
+          let collisionCheckResult = 
+                (unGO myPiece).handleAction gstate 
+                  (PlayerPiece.CheckCollidedWith (unGO playerPiece).movingShape)
           case collisionCheckResult of
             { m_object: Just myPiece' } ->
                 handleCollisionResult my_peerId peerId myPiece'
@@ -340,6 +342,6 @@ getCollision _peer1 gstate object1 gameObjects =
   where
   findCollision List.Nil = Nothing
   findCollision (List.Cons (Tuple id piece) rest) = 
-    case (unGO object1).handleAction gstate (PlayerPiece.CheckCollidedWith piece) of
+    case (unGO object1).handleAction gstate (PlayerPiece.CheckCollidedWith (unGO piece).movingShape) of
       { m_object: Just object2 } -> Just (Tuple id object2)
       _ -> findCollision rest

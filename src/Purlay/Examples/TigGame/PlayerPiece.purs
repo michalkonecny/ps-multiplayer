@@ -25,9 +25,9 @@ import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
 import Purlay.Examples.TigGame.Global (GState, PlayerId, initialMPt, maxSpeed, maxX, maxY, playerRadius, slowDownRatio, slowDownThreshold, speedIncrement)
-import Purlay.GameObject (GameObject(..), HandleAction, unGO)
+import Purlay.GameObject (GameObject(..), HandleAction)
 import Purlay.MovingPoint as MPt
-import Purlay.MovingShape (Consistency(..), MovingShape, Shape(..), initMovingAngle, updateXYState)
+import Purlay.MovingShape (MovingShape)
 import Purlay.MovingShape as MShp
 
 type ObjInfo = {
@@ -49,11 +49,11 @@ new info@{ playerId } =
   where
   mvshape =
     {
-      shape: Ball { radius: playerRadius }
-    , consistency: Solid
+      shape: MShp.Ball { radius: playerRadius }
+    , consistency: MShp.Solid
     , scaling: 1.0
     , xyState: initialMPt playerId
-    , angleState: initMovingAngle
+    , angleState: MShp.initMovingAngle
     }
 
 fromState :: State -> PlayerPiece
@@ -72,7 +72,7 @@ fromJson json = fromState <$> decodeJson json
 draw :: State -> PeerId -> GState -> Canvas.Context2D -> Effect Unit
 draw
   {info: {name, playerId}
-  , mvshape: {shape: Ball{radius}, xyState: {pos: {x,y}}}}
+  , mvshape: {shape: MShp.Ball{radius}, xyState: {pos: {x,y}}}}
   peerId
   { it }
   context
@@ -101,7 +101,7 @@ data Action
   = FrameTick
   | PushStart Direction 
   | PushStop  Direction 
-  | CheckCollidedWith PlayerPiece
+  | CheckCollidedWith MovingShape
 
 handleAction :: State -> HandleAction GState ObjInfo Action
 handleAction {info, mvshape: old_mvshape} _gstate action = {
@@ -115,23 +115,23 @@ handleAction {info, mvshape: old_mvshape} _gstate action = {
       else Just mvshape
     where
     mvshape =
-      flip updateXYState old_mvshape $
+      flip MShp.updateXYState old_mvshape $
         MPt.move {slowDownRatio, slowDownThreshold}
         >>> MPt.constrainSpeed {maxSpeed} 
         >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
   m_mvshape (PushStart d) = Just $
-    flip updateXYState old_mvshape $
+    flip MShp.updateXYState old_mvshape $
       case d of
         L -> MPt.setAccelX (- speedIncrement)
         R -> MPt.setAccelX (speedIncrement)
         U -> MPt.setAccelY (- speedIncrement)
         D -> MPt.setAccelY (speedIncrement)
   m_mvshape (PushStop d) = Just $
-    flip updateXYState old_mvshape $
+    flip MShp.updateXYState old_mvshape $
       case d of
         L -> MPt.resetAccelX (- speedIncrement)
         R -> MPt.resetAccelX (speedIncrement)
         U -> MPt.resetAccelY (- speedIncrement)
         D -> MPt.resetAccelY (speedIncrement)
-  m_mvshape (CheckCollidedWith piece) =
-    MShp.bounceOff (unGO piece).movingShape old_mvshape
+  m_mvshape (CheckCollidedWith movingShape) =
+    MShp.bounceOff movingShape old_mvshape
