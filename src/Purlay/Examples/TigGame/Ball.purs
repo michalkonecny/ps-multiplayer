@@ -1,5 +1,5 @@
 {-|
-    Module      :  Purlay.Examples.TigGame.PlayerPiece
+    Module      :  Purlay.Examples.TigGame.Ball
     Description :  A player's piece
     Copyright   :  (c) Michal Konecny 2021
     License     :  BSD3
@@ -8,34 +8,41 @@
     Stability   :  experimental
     Portability :  portable
 -}
-module Purlay.Examples.TigGame.PlayerPiece 
-(
-  Direction(..), Action(..), ObjInfo, PlayerPiece, new, fromJson
-)
-where
+module Purlay.Examples.TigGame.Ball
+  ( Action(..)
+  , Ball
+  , BallId
+  , Direction(..)
+  , ObjInfo
+  , fromJson
+  , new
+  )
+  where
 
 import Prelude
 
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, encodeJson)
 import Data.Either (Either)
+import Data.Int (toNumber)
 import Data.Int as Int
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
-import Purlay.Examples.TigGame.Global (GState, PlayerId, initialPlayerMPt, maxSpeed, maxX, maxY, playerRadius, slowDownRatio, slowDownThreshold, speedIncrement)
+import Purlay.Examples.TigGame.Global (GState, ballName, ballRadius, initialBallMPt, maxSpeed, maxX, maxY, slowDownRatio, slowDownThreshold, speedIncrement)
 import Purlay.GameObject (GameObject(..), HandleAction)
 import Purlay.MovingPoint as MPt
 import Purlay.MovingShape (MovingShape)
 import Purlay.MovingShape as MShp
 
 type ObjInfo = {
-    name :: String
-  , playerId :: PlayerId
-  }
+  id :: BallId
+}
 
-type PlayerPiece = GameObject GState ObjInfo Action
+type BallId = Int
+
+type Ball = GameObject GState ObjInfo Action
 
 
 type State = {
@@ -43,20 +50,20 @@ type State = {
 , mvshape :: MovingShape
 }
 
-new :: ObjInfo -> PlayerPiece
-new info@{ playerId } = 
-  fromState { info, mvshape }
+new :: BallId -> Ball
+new n = 
+  fromState { info: { id: n }, mvshape }
   where
   mvshape =
     {
-      shape: MShp.Ball { radius: playerRadius }
+      shape: MShp.Ball { radius: ballRadius }
     , consistency: MShp.Solid
     , scaling: 1.0
-    , xyState: initialPlayerMPt playerId
+    , xyState: initialBallMPt (toNumber n)
     , angleState: MShp.initMovingAngle
     }
 
-fromState :: State -> PlayerPiece
+fromState :: State -> Ball
 fromState state@{ info, mvshape } =
   GameObject {
     info 
@@ -66,15 +73,14 @@ fromState state@{ info, mvshape } =
   , handleAction: handleAction state
   }
 
-fromJson :: Json -> Either JsonDecodeError PlayerPiece
+fromJson :: Json -> Either JsonDecodeError Ball
 fromJson json = fromState <$> decodeJson json
 
 draw :: State -> PeerId -> GState -> Canvas.Context2D -> Effect Unit
 draw
-  {info: {name, playerId}
-  , mvshape: {shape: MShp.Ball{radius}, xyState: {pos: {x,y}}}}
-  peerId
-  { it }
+  { mvshape: {shape: MShp.Ball{radius}, xyState: {pos: {x,y}}}}
+  _peerId
+  _gstate
   context
   =
   do
@@ -85,15 +91,10 @@ draw
   Canvas.setFont context $ show textSize <> "px sans"
   Canvas.setTextAlign context Canvas.AlignCenter
   -- Canvas.setTextBaseline context Canvas.BaselineTop -- not available in this version yet
-  Canvas.fillText context name x (y+0.6*radius)
+  Canvas.fillText context ballName x (y+0.6*radius)
   where
   textSize = Int.round $ 1.6*radius
-  playerStyle 
-    | is_it = "lightcoral"
-    | is_me = "bisque"
-    | otherwise = "white"
-  is_it = playerId == it
-  is_me = playerId == peerId
+  playerStyle = "white" 
 
 data Direction = L | R | U | D
 
@@ -104,7 +105,7 @@ data Action
   | CheckCollidedWith MovingShape
 
 handleAction :: State -> HandleAction GState ObjInfo Action
-handleAction {info, mvshape: old_mvshape} _gstate action = {
+handleAction {info, mvshape: old_mvshape} { } action = {
     m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   , m_gstate: Nothing
   }

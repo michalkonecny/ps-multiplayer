@@ -131,8 +131,8 @@ component =
   where
   i_am_leader { my_peerId, peers_order } = Array.head peers_order == Just my_peerId
 
-  render {my_peerId, peers_power} = 
-    HH.div_ [ HH.text $ show {my_peerId, peers_power} ]
+  render {my_peerId, peers_power, peers_order} = 
+    HH.div_ [ HH.text $ show {my_peerId, peers_order, peers_power} ]
 
   handleQuery :: forall a. Query a -> H.HalogenM _ _ _ _ _ (Maybe a)
   handleQuery = case _ of

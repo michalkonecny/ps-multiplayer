@@ -39,6 +39,7 @@ import Halogen.HTML as HH
 import Halogen.VDom.Driver (runUI)
 import Purlay.Coordinator (StateChange, PeerId)
 import Purlay.Coordinator as Coordinator
+import Purlay.Examples.TigGame.Ball (Ball, BallId)
 import Purlay.Examples.TigGame.Global (GState, PlayerId, initGState, maxX, maxY, tickPeriod_ms, tigLobbySpec)
 import Purlay.Examples.TigGame.PlayerPiece (Direction(..), ObjInfo, PlayerPiece)
 import Purlay.Examples.TigGame.PlayerPiece as PlayerPiece
@@ -60,19 +61,24 @@ mainTigGame = do
 
 type GameState = {
   m_connection :: Maybe {ws::WS.WebSocket, my_peerId::PeerId}
+, i_am_leader :: Boolean
 , gstate :: GState
 , m_myPiece :: Maybe PlayerPiece
 , otherPieces :: PlayerPieces
+, balls :: Balls
 }
 
 type PlayerPieces = Map.Map PeerId PlayerPiece
+type Balls = Map.Map BallId Ball
 
 initialGameState :: GameState
 initialGameState =  { 
   m_connection: Nothing
+, i_am_leader: false
 , gstate: initGState
 , m_myPiece: Nothing
 , otherPieces: Map.empty
+, balls: Map.empty
 }
 
 updateGState :: (GState -> GState) -> GameState -> GameState
@@ -160,11 +166,12 @@ component =
   render {m_connection: Nothing} =
     HH.div_ $ sb do
       ae$ HH.slot _wsconnector _wsconnectorN WSConnector.component unit FromWSConnector
-  render {m_connection: Just {ws, my_peerId}, m_myPiece} =
+  render {m_connection: Just {ws, my_peerId}, i_am_leader, m_myPiece} =
     HH.div_ $ sb do
       ae$ HH.slot _coordinator _coordinatorN 
           Coordinator.component {ws, my_peerId} FromCoordinator
-      ae$ HH.br_
+      -- ae$ HH.br_
+      ae$ if i_am_leader then HH.hr_ else HH.br_
       case m_myPiece of
         Nothing ->
           ae$ HH.slot _lobby _lobbyN 
@@ -198,14 +205,22 @@ component =
       -- subscribe to keyboard events:
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp
 
-    FromCoordinator (Coordinator.O_NewLeader _) -> pure unit
+    FromCoordinator (Coordinator.O_NewLeader leaderId) -> do
+      {m_connection} <- H.get
+      case m_connection of
+        Just { my_peerId } ->
+          H.modify_ $ _ { i_am_leader = leaderId == my_peerId }
+        Nothing -> pure unit
     FromCoordinator (Coordinator.O_PeerJoined _) -> do
       -- let them know about our player:
-      {m_connection,m_myPiece} <- H.get
+      {m_connection,m_myPiece,i_am_leader,balls} <- H.get
       case m_connection, m_myPiece of
         Just {my_peerId}, Just myPiece -> do
           broadcastAction $ SetPlayer my_peerId myPiece
         _, _ -> pure unit
+      -- -- if we are leading, let them also know of the balls:
+      -- when i_am_leader do
+      --   broadcastAction $ SetBalls balls
     FromCoordinator (Coordinator.O_PeersGone peers) -> do
       H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
       updateCanvas

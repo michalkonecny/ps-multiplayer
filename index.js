@@ -11375,6 +11375,10 @@ var PS = {};
   var Data_Maybe = $PS["Data.Maybe"];
   var Halogen_HTML_Core = $PS["Halogen.HTML.Core"];
   var element = Halogen_HTML_Core.element(Data_Maybe.Nothing.value);
+  var hr = function (props) {
+      return element("hr")(props)([  ]);
+  };
+  var hr_ = hr([  ]);
   var input = function (props) {
       return element("input")(props)([  ]);
   };
@@ -11402,6 +11406,7 @@ var PS = {};
   exports["canvas"] = canvas;
   exports["div"] = div;
   exports["div_"] = div_;
+  exports["hr_"] = hr_;
   exports["input"] = input;
   exports["span_"] = span_;
   exports["table"] = table;
@@ -14027,10 +14032,15 @@ var PS = {};
               }
           })(Data_Show.showRecordFieldsCons({
               reflectSymbol: function () {
+                  return "peers_order";
+              }
+          })(Data_Show.showRecordFieldsCons({
+              reflectSymbol: function () {
                   return "peers_power";
               }
-          })(Data_Show.showRecordFieldsNil)(Data_Map_Internal.showMap(Data_Show.showInt)(Data_Show.showNumber)))(Data_Show.showInt)))({
+          })(Data_Show.showRecordFieldsNil)(Data_Map_Internal.showMap(Data_Show.showInt)(Data_Show.showNumber)))(Data_Show.showArray(Data_Show.showInt)))(Data_Show.showInt)))({
               my_peerId: v.my_peerId,
+              peers_order: v.peers_order,
               peers_power: v.peers_power
           })) ]);
       };
@@ -14071,14 +14081,14 @@ var PS = {};
                           power: power
                       })))(function () {
                           return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                              var $64 = {};
-                              for (var $65 in s) {
-                                  if ({}.hasOwnProperty.call(s, $65)) {
-                                      $64[$65] = s[$65];
+                              var $65 = {};
+                              for (var $66 in s) {
+                                  if ({}.hasOwnProperty.call(s, $66)) {
+                                      $65[$66] = s[$66];
                                   };
                               };
-                              $64.peers_power = Data_Map_Internal.insert(Data_Ord.ordInt)(v1.my_peerId)(power)(s.peers_power);
-                              return $64;
+                              $65.peers_power = Data_Map_Internal.insert(Data_Ord.ordInt)(v1.my_peerId)(power)(s.peers_power);
+                              return $65;
                           }))(function () {
                               return handleAction(CheckPeerOrder.value);
                           });
@@ -14091,14 +14101,14 @@ var PS = {};
                   return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(i_am_leader(v1) || Data_Array["null"](v1.peers_order))((function () {
                       var peers_order2 = Data_Functor.map(Data_Functor.functorArray)(Data_Tuple.fst)(Data_Array.sortBy(compSnd)(Data_Map_Internal.toUnfoldableUnordered(Data_Unfoldable.unfoldableArray)(v1.peers_power)));
                       return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                          var $70 = {};
-                          for (var $71 in v2) {
-                              if ({}.hasOwnProperty.call(v2, $71)) {
-                                  $70[$71] = v2[$71];
+                          var $71 = {};
+                          for (var $72 in v2) {
+                              if ({}.hasOwnProperty.call(v2, $72)) {
+                                  $71[$72] = v2[$72];
                               };
                           };
-                          $70.peers_order = peers_order2;
-                          return $70;
+                          $71.peers_order = peers_order2;
+                          return $71;
                       }))(function () {
                           return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(i_am_leader(v1))(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(broadcastToPeers(Data_Argonaut_Encode_Class.encodeRecord(Data_Argonaut_Encode_Class.gEncodeJsonCons(Data_Argonaut_Encode_Class.encodeJsonArray(Data_Argonaut_Encode_Class.encodeJsonInt))(Data_Argonaut_Encode_Class.gEncodeJsonNil)({
                               reflectSymbol: function () {
@@ -14131,28 +14141,28 @@ var PS = {};
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(!Data_Map_Internal.member(Data_Ord.ordInt)(v.value0.peerId)(v1.peers_power))(Halogen_Query_HalogenM.raise(new O_PeerJoined(v.value0.peerId))))(function () {
                       return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                          var $83 = {};
-                          for (var $84 in v2) {
-                              if ({}.hasOwnProperty.call(v2, $84)) {
-                                  $83[$84] = v2[$84];
+                          var $84 = {};
+                          for (var $85 in v2) {
+                              if ({}.hasOwnProperty.call(v2, $85)) {
+                                  $84[$85] = v2[$85];
                               };
                           };
-                          $83.peers_power = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0.peerId)(v.value0.power)(v1.peers_power);
-                          return $83;
+                          $84.peers_power = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0.peerId)(v.value0.power)(v1.peers_power);
+                          return $84;
                       });
                   });
               });
           };
           if (v instanceof IncomingPeersOrder) {
               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                  var $90 = {};
-                  for (var $91 in v1) {
-                      if ({}.hasOwnProperty.call(v1, $91)) {
-                          $90[$91] = v1[$91];
+                  var $91 = {};
+                  for (var $92 in v1) {
+                      if ({}.hasOwnProperty.call(v1, $92)) {
+                          $91[$92] = v1[$92];
                       };
                   };
-                  $90.peers_order = v.value0;
-                  return $90;
+                  $91.peers_order = v.value0;
+                  return $91;
               }))(function () {
                   var v1 = Data_Array.head(v.value0);
                   if (v1 instanceof Data_Maybe.Just) {
@@ -14164,14 +14174,14 @@ var PS = {};
           if (v instanceof IncomingPulse) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Now.now))(function (time) {
                   return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                      var $96 = {};
-                      for (var $97 in s) {
-                          if ({}.hasOwnProperty.call(s, $97)) {
-                              $96[$97] = s[$97];
+                      var $97 = {};
+                      for (var $98 in s) {
+                          if ({}.hasOwnProperty.call(s, $98)) {
+                              $97[$98] = s[$98];
                           };
                       };
-                      $96.peers_alive = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(time)(s.peers_alive);
-                      return $96;
+                      $97.peers_alive = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(time)(s.peers_alive);
+                      return $97;
                   });
               });
           };
@@ -14192,27 +14202,27 @@ var PS = {};
                               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Console.log("deadPlayersArray = " + Data_Show.show(Data_Show.showArray(Data_Show.showInt))(deadPlayersArray))))(function () {
                                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Halogen_Query_HalogenM.raise(new O_PeersGone(deadPlayersArray)))(function () {
                                       var isAlive = (function () {
-                                          var $117 = Data_HeytingAlgebra.not(Data_HeytingAlgebra.heytingAlgebraBoolean);
-                                          return function ($118) {
-                                              return $117((function (v3) {
+                                          var $118 = Data_HeytingAlgebra.not(Data_HeytingAlgebra.heytingAlgebraBoolean);
+                                          return function ($119) {
+                                              return $118((function (v3) {
                                                   return Data_Map_Internal.member(Data_Ord.ordInt)(v3)(deadPlayers);
-                                              })($118));
+                                              })($119));
                                           };
                                       })();
                                       var peers_order2 = Data_Array.filter(isAlive)(v1.peers_order);
                                       var peers_alive2 = Data_Map_Internal.filterKeys(Data_Ord.ordInt)(isAlive)(v1.peers_alive);
                                       var peers_power2 = Data_Map_Internal.filterKeys(Data_Ord.ordInt)(isAlive)(v1.peers_power);
                                       return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v3) {
-                                          var $102 = {};
-                                          for (var $103 in v3) {
-                                              if ({}.hasOwnProperty.call(v3, $103)) {
-                                                  $102[$103] = v3[$103];
+                                          var $103 = {};
+                                          for (var $104 in v3) {
+                                              if ({}.hasOwnProperty.call(v3, $104)) {
+                                                  $103[$104] = v3[$104];
                                               };
                                           };
-                                          $102.peers_alive = peers_alive2;
-                                          $102.peers_power = peers_power2;
-                                          $102.peers_order = peers_order2;
-                                          return $102;
+                                          $103.peers_alive = peers_alive2;
+                                          $103.peers_power = peers_power2;
+                                          $103.peers_order = peers_order2;
+                                          return $103;
                                       }))(function () {
                                           return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (state) {
                                               return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(i_am_leader(state))(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(broadcastToPeers(Data_Argonaut_Encode_Class.encodeRecord(Data_Argonaut_Encode_Class.gEncodeJsonCons(Data_Argonaut_Encode_Class.encodeJsonArray(Data_Argonaut_Encode_Class.encodeJsonInt))(Data_Argonaut_Encode_Class.gEncodeJsonNil)({
@@ -14409,7 +14419,18 @@ var PS = {};
   exports["constrainPosWrapAround"] = constrainPosWrapAround;
 })(PS);
 (function($PS) {
-  // Generated by purs version 0.14.5
+  
+  /**
+ * |
+ *     Module      :  Purlay.Examples.TigGame.Global
+ *     Description :  Global constants and state
+ *     Copyright   :  (c) Michal Konecny 2021
+ *     License     :  BSD3
+ * 
+ *     Maintainer  :  mikkonecny@gmail.com
+ *     Stability   :  experimental
+ *     Portability :  portable
+ */  
   "use strict";
   $PS["Purlay.Examples.TigGame.Global"] = $PS["Purlay.Examples.TigGame.Global"] || {};
   var exports = $PS["Purlay.Examples.TigGame.Global"];
@@ -14425,7 +14446,7 @@ var PS = {};
   var maxY = 800.0;
   var maxX = 800.0;
   var maxSpeed = 20.0;
-  var initialMPt = function (player) {
+  var initialPlayerMPt = function (player) {
       var playerN = Data_Int.toNumber(player);
       return Purlay_MovingPoint.constrainPosWrapAround({
           minX: 0.0,
@@ -14467,7 +14488,7 @@ var PS = {};
   exports["speedIncrement"] = speedIncrement;
   exports["playerRadius"] = playerRadius;
   exports["tigLobbySpec"] = tigLobbySpec;
-  exports["initialMPt"] = initialMPt;
+  exports["initialPlayerMPt"] = initialPlayerMPt;
   exports["initGState"] = initGState;
 })(PS);
 (function($PS) {
@@ -14694,18 +14715,7 @@ var PS = {};
   exports["decodeJsonConsistency"] = decodeJsonConsistency;
 })(PS);
 (function($PS) {
-  
-  /**
- * |
- *     Module      :  Purlay.Examples.TigGame.PlayerPiece
- *     Description :  A player's piece
- *     Copyright   :  (c) Michal Konecny 2021
- *     License     :  BSD3
- * 
- *     Maintainer  :  mikkonecny@gmail.com
- *     Stability   :  experimental
- *     Portability :  portable
- */  
+  // Generated by purs version 0.14.5
   "use strict";
   $PS["Purlay.Examples.TigGame.PlayerPiece"] = $PS["Purlay.Examples.TigGame.PlayerPiece"] || {};
   var exports = $PS["Purlay.Examples.TigGame.PlayerPiece"];
@@ -15127,7 +15137,7 @@ var PS = {};
           }),
           consistency: Purlay_MovingShape.Solid.value,
           scaling: 1.0,
-          xyState: Purlay_Examples_TigGame_Global.initialMPt(v.playerId),
+          xyState: Purlay_Examples_TigGame_Global.initialPlayerMPt(v.playerId),
           angleState: Purlay_MovingShape.initMovingAngle
       };
       return fromState({
@@ -15147,6 +15157,7 @@ var PS = {};
   exports["fromJson"] = fromJson;
 })(PS);
 (function($PS) {
+  // Generated by purs version 0.14.5
   "use strict";
   $PS["Purlay.GameCanvas"] = $PS["Purlay.GameCanvas"] || {};
   var exports = $PS["Purlay.GameCanvas"];
@@ -15186,12 +15197,6 @@ var PS = {};
       };
       return Q_NewState;
   })();
-
-  /**
- * 
- *   Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
- *   "PureScript Halogen demo for drawing on a canvas using Hooks"
- */  
   var component = function (dictMonadAff) {
       return function (v) {
           var drawOnCanvas = function (gobjs) {
@@ -15826,17 +15831,21 @@ var PS = {};
       return function (v) {
           return {
               m_connection: v.m_connection,
+              i_am_leader: v.i_am_leader,
               gstate: f(v.gstate),
               m_myPiece: v.m_myPiece,
-              otherPieces: v.otherPieces
+              otherPieces: v.otherPieces,
+              balls: v.balls
           };
       };
   };
   var initialGameState = {
       m_connection: Data_Maybe.Nothing.value,
+      i_am_leader: false,
       gstate: Purlay_Examples_TigGame_Global.initGState,
       m_myPiece: Data_Maybe.Nothing.value,
-      otherPieces: Data_Map_Internal.empty
+      otherPieces: Data_Map_Internal.empty,
+      balls: Data_Map_Internal.empty
   };
   var getCollision = function (_peer1) {
       return function (gstate) {
@@ -15859,7 +15868,7 @@ var PS = {};
                               $copy_v = v.value1;
                               return;
                           };
-                          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 343, column 3 - line 343, column 35): " + [ v.constructor.name ]);
+                          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 358, column 3 - line 358, column 35): " + [ v.constructor.name ]);
                       };
                       while (!$tco_done) {
                           $tco_result = $tco_loop($copy_v);
@@ -15883,7 +15892,7 @@ var PS = {};
               if (v1 instanceof Data_Either.Left) {
                   return Data_Either.Left.create("failed to parse `it`: " + Data_Show.show(Data_Argonaut_Decode_Error.showJsonDecodeError)(v1.value0));
               };
-              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 100, column 5 - line 102, column 62): " + [ v1.constructor.name ]);
+              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 106, column 5 - line 108, column 62): " + [ v1.constructor.name ]);
           };
           var v1 = Purlay_Examples_TigGame_PlayerPiece.fromJson(v.value);
           var v2 = Data_Int.fromString(v.name);
@@ -15966,7 +15975,12 @@ var PS = {};
                   ws: v.m_connection.value0.ws,
                   my_peerId: v.m_connection.value0.my_peerId
               })(FromCoordinator.create)))(function () {
-                  return Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML_Elements.br_))(function () {
+                  return Control_Bind.discard(Control_Bind.discardUnit)(Control_SequenceBuildMonad.sequenceBind(Data_Monoid.monoidArray))(Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)((function () {
+                      if (v.i_am_leader) {
+                          return Halogen_HTML_Elements.hr_;
+                      };
+                      return Halogen_HTML_Elements.br_;
+                  })()))(function () {
                       if (v.m_myPiece instanceof Data_Maybe.Nothing) {
                           return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML.slot()({
                               reflectSymbol: function () {
@@ -15989,25 +16003,25 @@ var PS = {};
                               height: Purlay_Examples_TigGame_Global.maxY
                           }))(Data_Unit.unit)(Control_Category.identity(Control_Category.categoryFn)));
                       };
-                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 168, column 7 - line 174, column 102): " + [ v.m_myPiece.constructor.name ]);
+                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 175, column 7 - line 181, column 102): " + [ v.m_myPiece.constructor.name ]);
                   });
               })));
           };
-          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 160, column 3 - line 162, column 88): " + [ v.constructor.name ]);
+          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 166, column 3 - line 168, column 88): " + [ v.constructor.name ]);
       };
       var handleCollisionResult = function (my_peerId) {
           return function (collidedPlayer) {
               return function (playerPiece$prime) {
                   return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
                       return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                          var $80 = {};
-                          for (var $81 in v1) {
-                              if ({}.hasOwnProperty.call(v1, $81)) {
-                                  $80[$81] = v1[$81];
+                          var $84 = {};
+                          for (var $85 in v1) {
+                              if ({}.hasOwnProperty.call(v1, $85)) {
+                                  $84[$85] = v1[$85];
                               };
                           };
-                          $80.m_myPiece = new Data_Maybe.Just(playerPiece$prime);
-                          return $80;
+                          $84.m_myPiece = new Data_Maybe.Just(playerPiece$prime);
+                          return $84;
                       }))(function () {
                           return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
                               return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(my_peerId === v.gstate.it && v.gstate.itActive)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateGState(function (v1) {
@@ -16036,14 +16050,14 @@ var PS = {};
                       };
                       if (v1.m_object instanceof Data_Maybe.Just) {
                           return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                              var $91 = {};
-                              for (var $92 in v2) {
-                                  if ({}.hasOwnProperty.call(v2, $92)) {
-                                      $91[$92] = v2[$92];
+                              var $95 = {};
+                              for (var $96 in v2) {
+                                  if ({}.hasOwnProperty.call(v2, $96)) {
+                                      $95[$96] = v2[$96];
                                   };
                               };
-                              $91.m_myPiece = new Data_Maybe.Just(v1.m_object.value0);
-                              return $91;
+                              $95.m_myPiece = new Data_Maybe.Just(v1.m_object.value0);
+                              return $95;
                           }))(function () {
                               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
                                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(broadcastAction(new SetPlayer(v.m_connection.value0.my_peerId, v1.m_object.value0)))(function () {
@@ -16052,7 +16066,7 @@ var PS = {};
                               });
                           });
                       };
-                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 303, column 25 - line 311, column 32): " + [ v1.m_object.constructor.name ]);
+                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 318, column 25 - line 326, column 32): " + [ v1.m_object.constructor.name ]);
                   })())(function (playerPiece2) {
                       var m_collisionResult = getCollision(v.m_connection.value0.my_peerId)(v.gstate)(playerPiece2)(v.otherPieces);
                       if (m_collisionResult instanceof Data_Maybe.Nothing) {
@@ -16061,7 +16075,7 @@ var PS = {};
                       if (m_collisionResult instanceof Data_Maybe.Just) {
                           return handleCollisionResult(v.m_connection.value0.my_peerId)(m_collisionResult.value0.value0)(m_collisionResult.value0.value1);
                       };
-                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 316, column 9 - line 319, column 72): " + [ m_collisionResult.constructor.name ]);
+                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 331, column 9 - line 334, column 72): " + [ m_collisionResult.constructor.name ]);
                   });
               };
               return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
@@ -16071,17 +16085,17 @@ var PS = {};
           if (v instanceof FromWSConnector) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Random.randomInt(0)(2000000000)))(function (my_peerId) {
                   return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                      var $108 = {};
-                      for (var $109 in v1) {
-                          if ({}.hasOwnProperty.call(v1, $109)) {
-                              $108[$109] = v1[$109];
+                      var $112 = {};
+                      for (var $113 in v1) {
+                          if ({}.hasOwnProperty.call(v1, $113)) {
+                              $112[$113] = v1[$113];
                           };
                       };
-                      $108.m_connection = new Data_Maybe.Just({
+                      $112.m_connection = new Data_Maybe.Just({
                           ws: v.value0.value0,
                           my_peerId: my_peerId
                       });
-                      return $108;
+                      return $112;
                   });
               });
           };
@@ -16095,14 +16109,14 @@ var PS = {};
                               name: name
                           });
                           return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                              var $115 = {};
-                              for (var $116 in v2) {
-                                  if ({}.hasOwnProperty.call(v2, $116)) {
-                                      $115[$116] = v2[$116];
+                              var $119 = {};
+                              for (var $120 in v2) {
+                                  if ({}.hasOwnProperty.call(v2, $120)) {
+                                      $119[$120] = v2[$120];
                                   };
                               };
-                              $115.m_myPiece = new Data_Maybe.Just(playerPiece);
-                              return $115;
+                              $119.m_myPiece = new Data_Maybe.Just(playerPiece);
+                              return $119;
                           }))(function () {
                               return handleAction(FrameTick.value);
                           });
@@ -16116,7 +16130,24 @@ var PS = {};
               });
           };
           if (v instanceof FromCoordinator && v.value0 instanceof Purlay_Coordinator.O_NewLeader) {
-              return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
+              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
+                  if (v1.m_connection instanceof Data_Maybe.Just) {
+                      return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
+                          var $129 = {};
+                          for (var $130 in v2) {
+                              if ({}.hasOwnProperty.call(v2, $130)) {
+                                  $129[$130] = v2[$130];
+                              };
+                          };
+                          $129.i_am_leader = v.value0.value0 === v1.m_connection.value0.my_peerId;
+                          return $129;
+                      });
+                  };
+                  if (v1.m_connection instanceof Data_Maybe.Nothing) {
+                      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
+                  };
+                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 210, column 7 - line 213, column 29): " + [ v1.m_connection.constructor.name ]);
+              });
           };
           if (v instanceof FromCoordinator && v.value0 instanceof Purlay_Coordinator.O_PeerJoined) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
@@ -16128,14 +16159,14 @@ var PS = {};
           };
           if (v instanceof FromCoordinator && v.value0 instanceof Purlay_Coordinator.O_PeersGone) {
               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                  var $135 = {};
-                  for (var $136 in s) {
-                      if ({}.hasOwnProperty.call(s, $136)) {
-                          $135[$136] = s[$136];
+                  var $149 = {};
+                  for (var $150 in s) {
+                      if ({}.hasOwnProperty.call(s, $150)) {
+                          $149[$150] = s[$150];
                       };
                   };
-                  $135.otherPieces = Data_Array.foldl(Data_Function.flip(Data_Map_Internal["delete"](Data_Ord.ordInt)))(s.otherPieces)(v.value0.value0);
-                  return $135;
+                  $149.otherPieces = Data_Array.foldl(Data_Function.flip(Data_Map_Internal["delete"](Data_Ord.ordInt)))(s.otherPieces)(v.value0.value0);
+                  return $149;
               }))(function () {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
                       return Data_Functor["void"](Halogen_Query_HalogenM.functorHalogenM)(Halogen_Query.tell()({
@@ -16154,19 +16185,19 @@ var PS = {};
               if (v1 instanceof Data_Either.Right) {
                   return Data_Foldable.sequence_(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Foldable.foldableArray)(Data_Functor.map(Data_Functor.functorArray)(handleAction)(v1.value0));
               };
-              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 217, column 7 - line 219, column 62): " + [ v1.constructor.name ]);
+              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 232, column 7 - line 234, column 62): " + [ v1.constructor.name ]);
           };
           if (v instanceof SetPlayer) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                      var $146 = {};
-                      for (var $147 in s) {
-                          if ({}.hasOwnProperty.call(s, $147)) {
-                              $146[$147] = s[$147];
+                      var $160 = {};
+                      for (var $161 in s) {
+                          if ({}.hasOwnProperty.call(s, $161)) {
+                              $160[$161] = s[$161];
                           };
                       };
-                      $146.otherPieces = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(v.value1)(s.otherPieces);
-                      return $146;
+                      $160.otherPieces = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(v.value1)(s.otherPieces);
+                      return $160;
                   }))(function () {
                       return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
                           if (v1.m_connection instanceof Data_Maybe.Just && v1.m_myPiece instanceof Data_Maybe.Just) {
@@ -16270,10 +16301,10 @@ var PS = {};
                           }));
                       });
                   };
-                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 279, column 7 - line 294, column 46): " + [ v1.m_connection.constructor.name ]);
+                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 294, column 7 - line 309, column 46): " + [ v1.m_connection.constructor.name ]);
               });
           };
-          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 177, column 18 - line 294, column 46): " + [ v.constructor.name ]);
+          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 184, column 18 - line 309, column 46): " + [ v.constructor.name ]);
       };
       return Halogen_Component.mkComponent({
           initialState: function (v) {
