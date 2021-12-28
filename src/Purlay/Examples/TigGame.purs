@@ -25,6 +25,7 @@ import Data.List (List)
 import Data.List as List
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.String.CodeUnits as StringCU
 import Data.Traversable (sequence, sequence_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -40,7 +41,8 @@ import Halogen.VDom.Driver (runUI)
 import Purlay.Coordinator (StateChange, PeerId)
 import Purlay.Coordinator as Coordinator
 import Purlay.Examples.TigGame.Ball (Ball, BallId)
-import Purlay.Examples.TigGame.Global (GState, PlayerId, initGState, maxX, maxY, tickPeriod_ms, tigLobbySpec)
+import Purlay.Examples.TigGame.Ball as Ball
+import Purlay.Examples.TigGame.Global (GState, PlayerId, initGState, maxX, maxY, tickPeriod_ms)
 import Purlay.Examples.TigGame.PlayerPiece (Direction(..), ObjInfo, PlayerPiece)
 import Purlay.Examples.TigGame.PlayerPiece as PlayerPiece
 import Purlay.GameCanvas as GameCanvas
@@ -92,6 +94,7 @@ data Action
   -- messages from peers via Coordinator:
   | SetPlayer PlayerId PlayerPiece
   | SetIt PlayerId
+  | SetBall BallId Ball
   -- internal:
   | FrameTick
   | HandleKeyDown H.SubscriptionId KeyboardEvent
@@ -106,6 +109,12 @@ changesToActions changes = sequence $ map doOne changes
     case decodeJson value of
       Right it -> Right $ SetIt it
       Left err -> Left $ "failed to parse `it`: " <> show err
+  doOne {name, value} | "ball" == (StringCU.take 4 name) =
+    case Int.fromString (StringCU.drop 4 name), Ball.fromJson value of
+      Just ballId, Right ball ->
+        Right $ SetBall ballId ball
+      _,_ -> 
+        Left $ "ignoring change: " <> show {name, value: stringify value}
   doOne {name, value} =
     case Int.fromString name, PlayerPiece.fromJson value of
       Just peerId, Right playerPiece ->
@@ -115,6 +124,12 @@ changesToActions changes = sequence $ map doOne changes
 
 actionToChanges :: Action -> Array StateChange
 actionToChanges (SetPlayer player piece) = [{name: show player, value: (unGO piece).encode}]
+actionToChanges (SetBall i ball) = [{name: "ball" <> (show i), value: (unGO ball).encode}]
+-- actionToChanges (SetBalls balls) = 
+--   map encodeBall $ Map.toUnfoldable balls
+--   where
+--   encodeBall (Tuple i ball) =
+--     {name: "ball" <> (show i), value: (unGO ball).encode}
 actionToChanges (SetIt it) = [{name: "it", value: encodeJson it}]
 actionToChanges _ = []
 
@@ -151,6 +166,15 @@ updateCanvas = do
       let pieces = List.Cons myPiece $ Map.values otherPieces
       void $ H.tell _canvas _canvasN $ GameCanvas.Q_NewState gstate pieces
     _ -> pure unit
+
+tigLobbySpec :: Lobby.ValuesSpec
+tigLobbySpec = sb do
+  ae$
+    { key: "name"
+    , maxLength: 5
+    , description: "Player's name"
+    , default: PlayerPiece.defaultName
+    }
 
 component :: forall input output query. H.Component query input output Aff
 component =
@@ -218,9 +242,10 @@ component =
         Just {my_peerId}, Just myPiece -> do
           broadcastAction $ SetPlayer my_peerId myPiece
         _, _ -> pure unit
-      -- -- if we are leading, let them also know of the balls:
-      -- when i_am_leader do
-      --   broadcastAction $ SetBalls balls
+      -- if we are leading, let them also know of the balls:
+      when i_am_leader do
+        sequence_ $ map (\(Tuple i b) -> broadcastAction $ SetBall i b) 
+          (Map.toUnfoldable balls :: Array _)
     FromCoordinator (Coordinator.O_PeersGone peers) -> do
       H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
       updateCanvas
@@ -232,6 +257,28 @@ component =
       case changesToActions changes of
         Left err -> liftEffect $ log err
         Right actions -> sequence_ $ map handleAction actions
+
+    SetBall ballId ball -> do
+      {m_connection,m_myPiece,gstate} <- H.get
+      -- update and redraw ball
+      H.modify_ $ \ s -> s { balls = Map.insert ballId ball s.balls }
+      updateCanvas
+
+      -- have I joined the game?
+      case m_connection, m_myPiece of
+        Just _, Just myPiece -> do -- joined already
+
+          -- check for collision with my piece:
+          let collisionCheckResult = 
+                (unGO myPiece).handleAction gstate 
+                  (PlayerPiece.CheckCollidedWith (unGO ball).movingShape)
+          case collisionCheckResult of
+            { m_object: Just myPiece' } -> do
+              H.modify_ $ _ {m_myPiece = Just myPiece' }
+              updateCanvas
+            _ -> pure unit  
+
+        _, _ -> pure unit --  not joined yet, no need to do anything
 
     SetPlayer peerId playerPiece -> do
       {m_connection,m_myPiece,gstate} <- H.get
