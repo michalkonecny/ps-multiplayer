@@ -47,7 +47,7 @@ import Purlay.Examples.TigGame.PlayerPiece (Direction(..), ObjInfo, PlayerPiece)
 import Purlay.Examples.TigGame.PlayerPiece as PlayerPiece
 import Purlay.GameCanvas as GameCanvas
 import Purlay.GameObject (unGO)
-import Purlay.HalogenHelpers (periodicEmitter, subscribeToKeyDownUp)
+import Purlay.HalogenHelpers (subscribePeriodicAction, subscribeToKeyDownUp)
 import Purlay.Lobby as Lobby
 import Purlay.WSConnector as WSConnector
 import Type.Proxy (Proxy(..))
@@ -224,7 +224,7 @@ component =
         _ -> pure unit
 
       -- start frame ticker:
-      void $ H.subscribe =<< periodicEmitter "FrameTick" (Milliseconds tickPeriod_ms) FrameTick
+      subscribePeriodicAction (Milliseconds tickPeriod_ms) FrameTick
 
       -- subscribe to keyboard events:
       subscribeToKeyDownUp HandleKeyDown HandleKeyUp

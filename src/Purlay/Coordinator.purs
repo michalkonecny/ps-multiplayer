@@ -22,7 +22,7 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.Subscription as HS
 import Purlay.EitherHelpers (mapLeft, (<||>), (<|||>))
-import Purlay.HalogenHelpers (affEmitter, periodicEmitter)
+import Purlay.HalogenHelpers (subscribeAffNotifier, subscribePeriodicAction)
 import WSListener (setupWSListener)
 import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket as WS
@@ -144,12 +144,11 @@ component =
     Init -> do
       {ws} <- H.get
       -- start listening to the websocket:
-      emitter <- affEmitter $ \listener ->
+      subscribeAffNotifier $ \listener ->
         setupWSListener ws (\msg -> H.liftEffect $ HS.notify listener (ReceiveMessageFromPeer msg))
-      void $ H.subscribe emitter
       -- start periodic emitters for Pulse and MeasurePower actions:
-      void $ H.subscribe =<< periodicEmitter "Pulse" (Milliseconds pulsePeriod_ms) OutgoingPulse
-      void $ H.subscribe =<< periodicEmitter "MeasurePower" (Milliseconds checkPowerPeriod_ms) MeasurePower
+      subscribePeriodicAction (Milliseconds pulsePeriod_ms) OutgoingPulse
+      subscribePeriodicAction (Milliseconds checkPowerPeriod_ms) MeasurePower
 
       handleAction MeasurePower
 

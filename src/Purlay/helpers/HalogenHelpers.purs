@@ -37,15 +37,26 @@ affEmitter affNotifier = do
   _ <- H.liftAff $ Aff.forkAff $ affNotifier listener
   pure emitter
 
+subscribeAffNotifier ::
+  forall m output slots action state b. MonadAff m => 
+  (HS.Listener action -> Aff b) -> 
+  H.HalogenM state action slots output m Unit
+subscribeAffNotifier affNotifier = do
+  emitter <- affEmitter affNotifier
+  void $ H.subscribe emitter
+
 {-|
-  Create an emitter that emits the given value periodically with the given period in milliseconds.
+  Subscribe a process that emits the given action periodically with the given period in milliseconds.
 -}
-periodicEmitter :: forall m a. MonadAff m => String -> Milliseconds -> a -> m (HS.Emitter a)
-periodicEmitter _name periodMs val = 
-  affEmitter $ \ listener -> forever do
+subscribePeriodicAction :: 
+  forall m output slots action state. MonadAff m => 
+  Milliseconds -> 
+  action -> 
+  H.HalogenM state action slots output m Unit
+subscribePeriodicAction periodMs action =
+  subscribeAffNotifier $ \ listener -> forever do
     Aff.delay periodMs
-    -- H.liftEffect $ log $ "emitting on " <> _name
-    H.liftEffect $ HS.notify listener val
+    H.liftEffect $ HS.notify listener action
 
 subscribeToKeyDownUp :: 
   forall m output slots action state. MonadAff m => 
