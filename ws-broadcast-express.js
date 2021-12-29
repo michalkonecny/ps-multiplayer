@@ -3,8 +3,7 @@
 const express = require('express');
 const WebSocket = require('ws');
 
-// const PORT = process.env.PORT || 3000;
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const server = express()
 .get('/', (req,res) => res.sendFile(__dirname + '/tigGame.html'))

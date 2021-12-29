@@ -17,9 +17,9 @@ import Prelude
 import Control.SequenceBuildMonad (ae, sb)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.String as String
 import Effect.Aff (Aff, attempt)
 import Effect.Aff as Aff
+import Effect.Console (log)
 import Halogen (liftAff, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
@@ -65,10 +65,10 @@ component =
       HH.div_ $ sb do
         ae$ HH.div_ $ sb do 
           ae$ HH.span_ $ sb do
-            ae$ HH.text "Enter broadcast server web-socket URL: ws://"
+            ae$ HH.text "Enter broadcast server web-socket URL: "
             ae$ HH.input $ sb do
-              ae$ HP.value (String.drop 5 urlInput)
-              ae$ HE.onValueChange (SetWSURL <<< ("ws://" <> _))
+              ae$ HP.value urlInput
+              ae$ HE.onValueChange SetWSURL
         ae$ HH.div [HP.class_ (H.ClassName "error")] [HH.text $ fromMaybe "" maybeMsg]
 
   handleAction = case _ of
@@ -95,10 +95,12 @@ component =
             else H.raise (O_Connected ws)
 
   getWSURL = do
+    -- get hostname and wsport URL
     loc <- location =<< window
-    host_pre <- hostname loc
-    let host = if host_pre == "" then "localhost" else host_pre
-    p_pre <- port loc
-    let p = if p_pre == "" then "3000" else p_pre
-    let prot = if host == "game-ws-broadcast.herokuapp.com" then "wss://" else "ws://"
-    pure $ prot <> host <> ":" <> p
+    host <- hostname loc
+    p <- port loc
+    log $ host <> ":" <> p
+    if host == "" || host == "localhost"
+      then pure "ws://localhost:3000"
+      else
+        pure $ "wss://" <> host <> ":" <> p
