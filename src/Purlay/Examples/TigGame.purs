@@ -336,13 +336,19 @@ component =
         _ -> pure unit
 
     FrameTick -> do
-      {m_connection,gstate:{it},otherPieces} <- H.get
+      {m_connection,gstate:{it},otherPieces, i_am_leader} <- H.get
       -- are we in the game play stage?
       case m_connection of
         Nothing -> pure unit
         Just {my_peerId} -> do
           -- update position and velocity:
           playerAction $ PlayerPiece.FrameTick
+
+          when i_am_leader do -- TODO
+            -- add any missing balls
+            -- updte ball position and velocity
+            -- for each ball, identify collisions and deal with them
+            pure unit
           
           -- check whether "it" exists and if not, who should become "it":
           let itGone = my_peerId /= it && (not $ Map.member it otherPieces)
