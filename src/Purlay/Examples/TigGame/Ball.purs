@@ -9,10 +9,7 @@
     Portability :  portable
 -}
 module Purlay.Examples.TigGame.Ball
-  ( Action(..)
-  , Ball
-  , BallId
-  , ObjInfo
+  ( BallId
   , fromJson
   , new
   )
@@ -29,7 +26,7 @@ import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
-import Purlay.Examples.TigGame.Global (Name, GState, maxX, maxY)
+import Purlay.Examples.TigGame.Global (Name, ObjAction(..), ObjInfo, TigObject, TigState, maxX, maxY)
 import Purlay.GameObject (GameObject(..), HandleAction)
 import Purlay.MovingPoint (MovingPoint)
 import Purlay.MovingPoint as MPt
@@ -58,13 +55,7 @@ initialBallMPt n =
   , accell: { x: 0.0, y: 0.0 }
   }
 
-type ObjInfo = {
-  id :: BallId
-}
-
 type BallId = Int
-
-type Ball = GameObject GState ObjInfo Action
 
 
 type State = {
@@ -72,9 +63,9 @@ type State = {
 , mvshape :: MovingShape
 }
 
-new :: BallId -> Ball
+new :: BallId -> TigObject
 new n = 
-  fromState { info: { id: n }, mvshape }
+  fromState { info: { name: ballName, m_playerId: Nothing }, mvshape }
   where
   mvshape =
     {
@@ -85,7 +76,7 @@ new n =
     , angleState: MShp.initMovingAngle
     }
 
-fromState :: State -> Ball
+fromState :: State -> TigObject
 fromState state@{ info, mvshape } =
   GameObject {
     info 
@@ -95,10 +86,10 @@ fromState state@{ info, mvshape } =
   , handleAction: handleAction state
   }
 
-fromJson :: Json -> Either JsonDecodeError Ball
+fromJson :: Json -> Either JsonDecodeError TigObject
 fromJson json = fromState <$> decodeJson json
 
-draw :: State -> PeerId -> GState -> Canvas.Context2D -> Effect Unit
+draw :: State -> PeerId -> TigState -> Canvas.Context2D -> Effect Unit
 draw
   { mvshape: {shape: MShp.Ball{radius}, xyState: {pos: {x,y}}}}
   _peerId
@@ -118,11 +109,7 @@ draw
   textSize = Int.round $ 1.6*radius
   playerStyle = "white" 
 
-data Action 
-  = FrameTick
-  | CheckCollidedWith MovingShape
-
-handleAction :: State -> HandleAction GState ObjInfo Action
+handleAction :: State -> HandleAction TigState ObjInfo ObjAction
 handleAction {info, mvshape: old_mvshape} { } action = {
     m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   , m_gstate: Nothing
@@ -140,3 +127,4 @@ handleAction {info, mvshape: old_mvshape} { } action = {
         >>> MPt.constrainPosWrapAround {minX:0.0, maxX, minY: 0.0, maxY}
   m_mvshape (CheckCollidedWith movingShape) =
     MShp.bounceOff movingShape old_mvshape
+  m_mvshape _ = Nothing

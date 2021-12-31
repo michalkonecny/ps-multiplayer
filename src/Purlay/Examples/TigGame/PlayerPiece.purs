@@ -9,19 +9,9 @@
     Portability :  portable
 -}
 module Purlay.Examples.TigGame.PlayerPiece
-  ( Action(..)
-  , Direction(..)
-  , ObjInfo
-  , PlayerPiece
+  ( new
   , defaultName
   , fromJson
-  , initialPlayerMPt
-  , maxSpeed
-  , new
-  , playerRadius
-  , slowDownRatio
-  , slowDownThreshold
-  , speedIncrement
   )
   where
 
@@ -30,12 +20,12 @@ import Prelude
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, encodeJson)
 import Data.Either (Either)
 import Data.Int as Int
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
-import Purlay.Examples.TigGame.Global (GState, Name, PlayerId, maxX, maxY)
+import Purlay.Examples.TigGame.Global (ObjAction(..), Direction(..), TigState, Name, ObjInfo, PlayerId, TigObject, maxX, maxY)
 import Purlay.GameObject (GameObject(..), HandleAction)
 import Purlay.MovingPoint (MovingPoint)
 import Purlay.MovingPoint as MPt
@@ -72,23 +62,17 @@ initialPlayerMPt player =
   where
   playerN = Int.toNumber player
 
-type ObjInfo = {
-    name :: String
-  , playerId :: PlayerId
-  }
-
-type PlayerPiece = GameObject GState ObjInfo Action
-
 
 type State = {
   info :: ObjInfo
 , mvshape :: MovingShape
 }
 
-new :: ObjInfo -> PlayerPiece
-new info@{ playerId } = 
+new :: ObjInfo -> TigObject
+new info@{ m_playerId } = 
   fromState { info, mvshape }
   where
+  playerId = maybe 0 identity m_playerId
   mvshape =
     {
       shape: MShp.Ball { radius: playerRadius }
@@ -98,7 +82,7 @@ new info@{ playerId } =
     , angleState: MShp.initMovingAngle
     }
 
-fromState :: State -> PlayerPiece
+fromState :: State -> TigObject
 fromState state@{ info, mvshape } =
   GameObject {
     info 
@@ -108,12 +92,12 @@ fromState state@{ info, mvshape } =
   , handleAction: handleAction state
   }
 
-fromJson :: Json -> Either JsonDecodeError PlayerPiece
+fromJson :: Json -> Either JsonDecodeError TigObject
 fromJson json = fromState <$> decodeJson json
 
-draw :: State -> PeerId -> GState -> Canvas.Context2D -> Effect Unit
+draw :: State -> PeerId -> TigState -> Canvas.Context2D -> Effect Unit
 draw
-  {info: {name, playerId}
+  {info: {name, m_playerId}
   , mvshape: {shape: MShp.Ball{radius}, xyState: {pos: {x,y}}}}
   peerId
   { it }
@@ -134,18 +118,10 @@ draw
     | is_it = "lightcoral"
     | is_me = "bisque"
     | otherwise = "white"
-  is_it = playerId == it
-  is_me = playerId == peerId
+  is_it = m_playerId == Just it
+  is_me = m_playerId == Just peerId
 
-data Direction = L | R | U | D
-
-data Action 
-  = FrameTick
-  | PushStart Direction 
-  | PushStop  Direction 
-  | CheckCollidedWith MovingShape
-
-handleAction :: State -> HandleAction GState ObjInfo Action
+handleAction :: State -> HandleAction TigState ObjInfo ObjAction
 handleAction {info, mvshape: old_mvshape} _gstate action = {
     m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   , m_gstate: Nothing

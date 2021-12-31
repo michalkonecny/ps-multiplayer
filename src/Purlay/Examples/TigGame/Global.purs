@@ -10,6 +10,11 @@
 -}
 module Purlay.Examples.TigGame.Global where
 
+import Data.Map as Map
+import Data.Maybe (Maybe)
+import Purlay.GameObject (GameObject)
+import Purlay.MovingShape (MovingShape)
+
 -- import Prelude
 
 tickPeriod_ms :: Number
@@ -24,9 +29,24 @@ type Name = String
 
 type PlayerId = Int
 
-type GState = { it :: PlayerId, itActive :: Boolean }
+type TigState = { it :: PlayerId, itActive :: Boolean }
 
-initGState :: GState
-initGState = {
+initTigState :: TigState
+initTigState = {
     it: 0, itActive: true
   }
+
+type ObjInfo = {
+    name :: Name
+  , m_playerId :: Maybe PlayerId
+  }
+
+data Direction = L | R | U | D
+
+data ObjAction
+  = FrameTick
+  | PushStart Direction
+  | PushStop  Direction 
+  | CheckCollidedWith MovingShape
+
+type TigObject = GameObject TigState ObjInfo ObjAction
