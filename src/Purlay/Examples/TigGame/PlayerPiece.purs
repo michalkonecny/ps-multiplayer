@@ -20,7 +20,7 @@ import Prelude
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, encodeJson)
 import Data.Either (Either)
 import Data.Int as Int
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Graphics.Canvas as Canvas
 import Math (pi)
@@ -68,17 +68,16 @@ type State = {
 , mvshape :: MovingShape
 }
 
-new :: ObjInfo -> TigObject
-new info@{ m_playerId } = 
-  fromState { info, mvshape }
+new :: PlayerId -> Name -> TigObject
+new id name = 
+  fromState { info: { name, m_playerId: Just id }, mvshape }
   where
-  playerId = maybe 0 identity m_playerId
   mvshape =
     {
       shape: MShp.Ball { radius: playerRadius }
     , consistency: MShp.Solid
     , scaling: 1.0
-    , xyState: initialPlayerMPt playerId
+    , xyState: initialPlayerMPt id
     , angleState: MShp.initMovingAngle
     }
 

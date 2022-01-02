@@ -210,7 +210,7 @@ component =
       {m_connection} <- H.get
       case m_connection of
         Just {my_peerId} -> do
-          let playerPiece = PlayerPiece.new { m_playerId: Just my_peerId, name }
+          let playerPiece = PlayerPiece.new my_peerId name
           H.modify_ $ _ { m_myPiece = Just playerPiece }
           -- force a tick now to sync with others asap:
           handleAction FrameTick

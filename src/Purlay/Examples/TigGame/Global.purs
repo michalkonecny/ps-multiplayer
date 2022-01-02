@@ -10,7 +10,6 @@
 -}
 module Purlay.Examples.TigGame.Global where
 
-import Data.Map as Map
 import Data.Maybe (Maybe)
 import Purlay.GameObject (GameObject)
 import Purlay.MovingShape (MovingShape)
