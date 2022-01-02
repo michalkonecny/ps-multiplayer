@@ -110,10 +110,8 @@ draw
   playerStyle = "white" 
 
 handleAction :: State -> HandleAction TigState ObjInfo ObjAction
-handleAction {info, mvshape: old_mvshape} { } action = {
-    m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
-  , m_gstate: Nothing
-  }
+handleAction {info, mvshape: old_mvshape} { } action = 
+  map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   where
   m_mvshape FrameTick =
     if mvshape.xyState == old_mvshape.xyState

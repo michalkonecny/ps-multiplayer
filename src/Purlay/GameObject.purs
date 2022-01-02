@@ -14,11 +14,7 @@ import Purlay.Coordinator (PeerId)
 import Purlay.MovingShape (MovingShape)
 
 type HandleAction gstate objinfo action = 
-  gstate -> action -> 
-    {
-      m_object :: Maybe (GameObject gstate objinfo action)
-    , m_gstate :: Maybe gstate
-    }
+  gstate -> action -> Maybe (GameObject gstate objinfo action)
 
 data GameObject gstate objinfo action = 
   GameObject (GameObjectRec gstate objinfo action)

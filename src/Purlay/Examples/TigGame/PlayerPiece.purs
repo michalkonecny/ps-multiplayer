@@ -121,10 +121,8 @@ draw
   is_me = m_playerId == Just peerId
 
 handleAction :: State -> HandleAction TigState ObjInfo ObjAction
-handleAction {info, mvshape: old_mvshape} _gstate action = {
-    m_object: map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
-  , m_gstate: Nothing
-  }
+handleAction {info, mvshape: old_mvshape} _gstate action = 
+  map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   where
   m_mvshape FrameTick =
     if mvshape.xyState == old_mvshape.xyState

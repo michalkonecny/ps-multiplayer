@@ -289,7 +289,7 @@ component =
                 (unGO myPiece).handleAction gstate 
                   (ObjAction.CheckCollidedWith (unGO playerPiece).movingShape)
           case collisionCheckResult of
-            { m_object: Just myPiece' } ->
+            Just myPiece' ->
                 handleCollisionResult my_peerId peerId myPiece'
             _ -> pure unit      
 
@@ -363,7 +363,7 @@ playerAction p_action = do
   case m_connection, m_myPiece of
     Just {my_peerId}, Just playerPiece1 -> do
       -- take the player action:
-      let { m_object: m_newPlayerPiece } = (unGO playerPiece1).handleAction gstate p_action
+      let m_newPlayerPiece = (unGO playerPiece1).handleAction gstate p_action
       -- if my piece changed, take note of it:
       playerPiece2 <- case m_newPlayerPiece of
         Nothing -> pure playerPiece1
@@ -415,5 +415,5 @@ getCollision peer1 gstate object1 gameObjects =
       then findCollision rest
       else
         case (unGO object1).handleAction gstate (ObjAction.CheckCollidedWith (unGO piece).movingShape) of
-          { m_object: Just object2 } -> Just (Tuple id object2)
+          Just object2 -> Just (Tuple id object2)
           _ -> findCollision rest
