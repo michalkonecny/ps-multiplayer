@@ -41,7 +41,7 @@ import Purlay.Coordinator (StateChange, PeerId)
 import Purlay.Coordinator as Coordinator
 import Purlay.Examples.TigGame.Global (Direction(..)) as Direction
 import Purlay.Examples.TigGame.Global (ObjAction(..)) as ObjAction
-import Purlay.Examples.TigGame.Global (ObjAction, ObjInfo, PlayerId, TigObject, TigState, initTigState, maxX, maxY, tickPeriod_ms)
+import Purlay.Examples.TigGame.Global (ObjAction, ObjInfo, PlayerId, TigState, TigObject, initTigState, maxX, maxY, tickPeriod_ms)
 import Purlay.Examples.TigGame.PlayerPiece as PlayerPiece
 import Purlay.GameCanvas as GameCanvas
 import Purlay.GameObject (unGO)
@@ -354,55 +354,66 @@ component =
             updateCanvas
             broadcastAction $ SetIt my_peerId
 
-  playerAction p_action = do
-    {m_connection,m_myPiece,gstate,otherPieces} <- H.get
-    case m_connection, m_myPiece of
-      Just {my_peerId}, Just playerPiece1 -> do
-        -- take the player action:
-        let { m_object: m_newPlayerPiece } = (unGO playerPiece1).handleAction gstate p_action
-        -- if my piece changed, take note of it:
-        playerPiece2 <- case m_newPlayerPiece of
-          Nothing -> pure playerPiece1
-          Just newPlayerPiece -> do
-            -- update my piece locally:
-            H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
-            updateCanvas
-            -- update others of my move:
-            broadcastAction $ SetPlayer my_peerId newPlayerPiece
-            pure newPlayerPiece
+playerAction ::
+  forall output . 
+  ObjAction -> 
+  H.HalogenM GameState Action Slots output Aff Unit
+playerAction p_action = do
+  {m_connection,m_myPiece,gstate,otherPieces} <- H.get
+  case m_connection, m_myPiece of
+    Just {my_peerId}, Just playerPiece1 -> do
+      -- take the player action:
+      let { m_object: m_newPlayerPiece } = (unGO playerPiece1).handleAction gstate p_action
+      -- if my piece changed, take note of it:
+      playerPiece2 <- case m_newPlayerPiece of
+        Nothing -> pure playerPiece1
+        Just newPlayerPiece -> do
+          -- update my piece locally:
+          H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
+          updateCanvas
+          -- update others of my move:
+          broadcastAction $ SetPlayer my_peerId newPlayerPiece
+          pure newPlayerPiece
 
-        -- check for a collision:
-        let m_collisionResult = getCollision my_peerId gstate playerPiece2 otherPieces
-          
-        case m_collisionResult of
-          Nothing -> pure unit
-          Just (Tuple collidedPlayer playerPiece3) -> 
-            handleCollisionResult my_peerId collidedPlayer playerPiece3
-      _,_ -> pure unit
+      -- check for a collision:
+      let m_collisionResult = getCollision my_peerId gstate playerPiece2 otherPieces
+        
+      case m_collisionResult of
+        Nothing -> pure unit
+        Just (Tuple collidedPlayer playerPiece3) -> 
+          handleCollisionResult my_peerId collidedPlayer playerPiece3
+    _,_ -> pure unit
 
-  handleCollisionResult my_peerId collidedPlayer playerPiece' =
-    do -- collision ocurred, bouncing off another piece
-    {gstate:{it,itActive}} <- H.get
-    -- update my piece locally:
-    H.modify_ $ _ {m_myPiece = Just playerPiece' }
+handleCollisionResult :: 
+  forall output . 
+  PeerId -> PlayerId -> TigObject -> 
+  H.HalogenM GameState Action Slots output Aff Unit
+handleCollisionResult my_peerId collidedPlayer playerPiece' =
+  do -- collision ocurred, bouncing off another piece
+  {gstate:{it,itActive}} <- H.get
+  -- update my piece locally:
+  H.modify_ $ _ {m_myPiece = Just playerPiece' }
+  updateCanvas
+  -- DO NOT send my new position to peers:
+  -- broadcastAction $ SetPlayer my_peerId playerPiece3
+
+  -- if I am it, tig them!
+  when (my_peerId == it && itActive) do
+    -- gotcha! update it locally:
+    H.modify_ $ updateTigState $ _ { it = collidedPlayer }
     updateCanvas
-    -- DO NOT send my new position to peers:
-    -- broadcastAction $ SetPlayer my_peerId playerPiece3
-
-    -- if I am it, tig them!
-    when (my_peerId == it && itActive) do
-      -- gotcha! update it locally:
-      H.modify_ $ updateTigState $ _ { it = collidedPlayer }
-      updateCanvas
-      -- and announce new "it":
-      broadcastAction $ SetIt collidedPlayer
+    -- and announce new "it":
+    broadcastAction $ SetIt collidedPlayer
 
 getCollision :: PeerId -> TigState -> TigObject -> PlayerPieces -> Maybe (Tuple PeerId TigObject)
-getCollision _peer1 gstate object1 gameObjects =
+getCollision peer1 gstate object1 gameObjects =
   findCollision (Map.toUnfoldable gameObjects :: List _)
   where
   findCollision List.Nil = Nothing
   findCollision (List.Cons (Tuple id piece) rest) = 
-    case (unGO object1).handleAction gstate (ObjAction.CheckCollidedWith (unGO piece).movingShape) of
-      { m_object: Just object2 } -> Just (Tuple id object2)
-      _ -> findCollision rest
+    if id < peer1
+      then findCollision rest
+      else
+        case (unGO object1).handleAction gstate (ObjAction.CheckCollidedWith (unGO piece).movingShape) of
+          { m_object: Just object2 } -> Just (Tuple id object2)
+          _ -> findCollision rest
