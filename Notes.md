@@ -19,12 +19,12 @@
       * option 1: generic rootComponent + injection of specific functionality via types and other parameters
       * option 2: small TigGame component including generic functionality
         * standard elements mixed with bespoke elements for slots, state, render, actions and action components
-  * [ ] GameObjectStore
-    * [ ] holds GameObjects indexed by String names
-    * [ ] can send an object action to one of more objects
+  * [X] GameObjectStore
+    * [X] holds a map of GameObjects
+    * [X] can send an object action to one of more objects
       * automatically updating the map if the object(s) changed
       * also returns a list of all changed objects
-    * [ ] can do collision detection
+    * [X] can do collision detection
       * focusing on a subset of objects, detecting and handling their collisions with all objects
         * some pairs of objects are ignored, determined by a given binary predicate
       * also returns a list of all changed objects

@@ -97,3 +97,21 @@ bounceOff otherR@{shape: Ball _, consistency: Solid} r@{shape: Ball _, consisten
         -- velocity towards other ball stationary at (0,0):
         v = - (y*dy + x*dx) / (x*x + y*y)
   | otherwise = Nothing
+
+checkCollisionAndBounce ::
+  { s1 :: MovingShape, s2 :: MovingShape } -> Maybe { new_s1 :: MovingShape, new_s2 :: MovingShape }
+checkCollisionAndBounce { s1: s1@{shape: Ball _, consistency: Solid}, s2: s2@{shape: Ball _, consistency: Solid} }
+  | isTouching s1 s2 =
+    case relativeTo s2 relCollision s1, relativeTo s1 relCollision s2 of
+      Just new_s1, Just new_s2 -> Just { new_s1, new_s2 }
+      _, _ -> Nothing
+      where
+      relCollision o@{xyState: xyState@{pos: {x, y}, velo:{x: dx, y: dy}}} =
+        if v <= 0.0 then Nothing -- no collision
+        else Just $ o{ xyState = xyState{ velo = {x: dx + v*x/2.0, y: dy + v*y/2.0} } }
+          -- assuming the balls have the same mass
+          -- assuming there is no friction or damping
+        where
+        -- velocity towards other ball stationary at (0,0):
+        v = - (y*dy + x*dx) / (x*x + y*y)
+  | otherwise = Nothing
