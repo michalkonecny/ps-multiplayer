@@ -1,8 +1,11 @@
-  module Purlay.GameObject 
-(
-  GameObjectRec, GameObject(..), unGO, HandleAction
-)
-where
+  module Purlay.GameObject
+  ( ApplyAction
+  , GameObject(..)
+  , GameObjectRec
+  , unGO
+  , updateRec
+  )
+  where
 
 import Prelude
 
@@ -13,7 +16,7 @@ import Graphics.Canvas as Canvas
 import Purlay.Coordinator (PeerId)
 import Purlay.MovingShape (MovingShape)
 
-type HandleAction gstate objinfo action = 
+type ApplyAction gstate objinfo action = 
   gstate -> action -> Maybe (GameObject gstate objinfo action)
 
 data GameObject gstate objinfo action = 
@@ -25,9 +28,15 @@ type GameObjectRec gstate objinfo action =
   , movingShape :: MovingShape
   , draw :: PeerId -> gstate -> Canvas.Context2D -> Effect Unit
   , encode :: Json
-  , handleAction :: HandleAction gstate objinfo action
+  , applyAction :: ApplyAction gstate objinfo action
   }
 
 unGO :: forall gstate objinfo action. 
   GameObject gstate objinfo action -> GameObjectRec gstate objinfo action
 unGO (GameObject gameObjectRec) = gameObjectRec
+
+updateRec :: 
+  forall gstate objinfo action. 
+  (GameObjectRec gstate objinfo action -> GameObjectRec gstate objinfo action) ->
+  GameObject gstate objinfo action -> GameObject gstate objinfo action
+updateRec f (GameObject gameObjectRec) = GameObject (f gameObjectRec)

@@ -26,7 +26,7 @@ import Graphics.Canvas as Canvas
 import Math (pi)
 import Purlay.Coordinator (PeerId)
 import Purlay.Examples.TigGame.Global (ObjAction(..), Direction(..), TigState, Name, ObjInfo, PlayerId, TigObject, maxX, maxY)
-import Purlay.GameObject (GameObject(..), HandleAction)
+import Purlay.GameObject (GameObject(..), ApplyAction)
 import Purlay.MovingPoint (MovingPoint)
 import Purlay.MovingPoint as MPt
 import Purlay.MovingShape (MovingShape)
@@ -88,7 +88,7 @@ fromState state@{ info, mvshape } =
   , movingShape: mvshape
   , draw: draw state
   , encode: encodeJson state
-  , handleAction: handleAction state
+  , applyAction: applyAction state
   }
 
 fromJson :: Json -> Either JsonDecodeError TigObject
@@ -120,8 +120,8 @@ draw
   is_it = m_playerId == Just it
   is_me = m_playerId == Just peerId
 
-handleAction :: State -> HandleAction TigState ObjInfo ObjAction
-handleAction {info, mvshape: old_mvshape} _gstate action = 
+applyAction :: State -> ApplyAction TigState ObjInfo ObjAction
+applyAction {info, mvshape: old_mvshape} _gstate action = 
   map (\mvshape -> fromState {info, mvshape}) $ m_mvshape action
   where
   m_mvshape FrameTick =
