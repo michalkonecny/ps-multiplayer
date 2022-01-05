@@ -4,8 +4,7 @@ import Prelude
 
 import Data.Foldable (traverse_)
 import Data.Int as Int
-import Data.List (List)
-import Data.List as List
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Traversable (sequence)
 import Data.Tuple.Nested ((/\))
@@ -17,22 +16,23 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Halogen.Hooks as Hooks
 import Purlay.Coordinator (PeerId)
-import Purlay.GameObject (GameObject, unGO)
+import Purlay.GameObject (unGO)
+import Purlay.GameObjectStore (GameObjectStore)
 
-data Query gstate objinfo go_action a = 
-  Q_NewState gstate (List (GameObject gstate objinfo go_action)) a
+data Query gstate objinfo go_action index a = 
+  Q_NewState gstate (GameObjectStore gstate objinfo go_action index) a
 {-
   Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
   "PureScript Halogen demo for drawing on a canvas using Hooks"
 -}
 component ::
-  forall input output m gstate objinfo go_action.
+  forall input output m gstate objinfo go_action index.
   MonadAff m =>
   {my_peerId :: PeerId, initGState :: gstate, width::Number, height::Number} -> 
-  H.Component (Query gstate objinfo go_action) input output m
+  H.Component (Query gstate objinfo go_action index) input output m
 component {my_peerId, initGState, width, height} =
   Hooks.component \{ queryToken } _ -> Hooks.do
-    gobjs /\ modifyGObjs <- Hooks.useState List.Nil
+    gobjs /\ modifyGObjs <- Hooks.useState Map.empty
     gstate /\ modifyGState <- Hooks.useState initGState
     Hooks.useQuery queryToken case _ of
       Q_NewState gstate' gobjs' _ -> do

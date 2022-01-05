@@ -20,7 +20,6 @@ You can edit this file as you like.
   , "halogen-hooks"
   , "halogen-subscriptions"
   , "integers"
-  , "lists"
   , "math"
   , "maybe"
   , "now"

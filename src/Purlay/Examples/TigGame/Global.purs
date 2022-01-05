@@ -10,8 +10,11 @@
 -}
 module Purlay.Examples.TigGame.Global where
 
+import Prelude
+
 import Data.Maybe (Maybe)
 import Purlay.GameObject (GameObject)
+import Purlay.GameObjectStore (GameObjectStore)
 import Purlay.MovingShape (MovingShape)
 
 -- import Prelude
@@ -49,3 +52,16 @@ data ObjAction
   | CheckCollidedWith MovingShape
 
 type TigObject = GameObject TigState ObjInfo ObjAction
+
+type ObjId = Int
+
+minPeerId = 1000 :: ObjId
+maxPeerId = 2000000000 :: ObjId
+
+objIdIsPlayer :: ObjId -> Boolean
+objIdIsPlayer id = id >= minPeerId
+
+objIdIsBall :: ObjId -> Boolean
+objIdIsBall id = id < minPeerId
+
+type TigObjectStore = GameObjectStore TigState ObjInfo ObjAction ObjId

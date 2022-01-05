@@ -21,12 +21,9 @@ import Data.Argonaut (decodeJson, encodeJson, stringify)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Int as Int
-import Data.List (List)
-import Data.List as List
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Traversable (sequence, sequence_)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Effect.Aff.Class (liftAff)
@@ -41,10 +38,11 @@ import Purlay.Coordinator (StateChange, PeerId)
 import Purlay.Coordinator as Coordinator
 import Purlay.Examples.TigGame.Global (Direction(..)) as Direction
 import Purlay.Examples.TigGame.Global (ObjAction(..)) as ObjAction
-import Purlay.Examples.TigGame.Global (ObjAction, ObjInfo, PlayerId, TigState, TigObject, initTigState, maxX, maxY, tickPeriod_ms)
+import Purlay.Examples.TigGame.Global (ObjAction, ObjId, ObjInfo, PlayerId, TigObject, TigObjectStore, TigState, initTigState, maxPeerId, maxX, maxY, minPeerId, objIdIsBall, objIdIsPlayer, tickPeriod_ms)
 import Purlay.Examples.TigGame.PlayerPiece as PlayerPiece
 import Purlay.GameCanvas as GameCanvas
 import Purlay.GameObject (unGO)
+import Purlay.GameObjectStore as GameObjectStore
 import Purlay.HalogenHelpers (subscribePeriodicAction, subscribeToKeyDownUp)
 import Purlay.Lobby as Lobby
 import Purlay.WSConnector as WSConnector
@@ -62,10 +60,9 @@ mainTigGame = do
 type GameState = {
   m_connection :: Maybe {ws::WS.WebSocket, my_peerId::PeerId}
 , i_am_leader :: Boolean
+, i_am_playing :: Boolean
 , gstate :: TigState
-, m_myPiece :: Maybe TigObject
-, otherPieces :: PlayerPieces
--- , balls :: Balls
+, objects :: TigObjectStore
 }
 
 type PlayerPieces = Map.Map PlayerId TigObject
@@ -75,10 +72,9 @@ initialGameState :: GameState
 initialGameState =  { 
   m_connection: Nothing
 , i_am_leader: false
+, i_am_playing: false
 , gstate: initTigState
-, m_myPiece: Nothing
-, otherPieces: Map.empty
--- , balls: Map.empty
+, objects: Map.empty
 }
 
 updateTigState :: (TigState -> TigState) -> GameState -> GameState
@@ -143,7 +139,7 @@ type Slots = (
   wsconnector :: forall query . H.Slot query WSConnector.Output Int
 , coordinator :: H.Slot Coordinator.Query Coordinator.Output Int
 , lobby       :: H.Slot Lobby.Query Lobby.Output Int
-, canvas      :: H.Slot (GameCanvas.Query TigState ObjInfo ObjAction) Action Int 
+, canvas      :: H.Slot (GameCanvas.Query TigState ObjInfo ObjAction ObjId) Action Int 
 )
 
 broadcastAction :: forall output. Action -> H.HalogenM GameState Action Slots output Aff Unit
@@ -153,12 +149,8 @@ broadcastAction action =
 
 updateCanvas :: forall output. H.HalogenM GameState Action Slots output Aff Unit
 updateCanvas = do
-  {gstate, m_myPiece, otherPieces} <- H.get
-  case m_myPiece of
-    Just myPiece -> do
-      let pieces = List.Cons myPiece $ Map.values otherPieces
-      void $ H.tell _canvas _canvasN $ GameCanvas.Q_NewState gstate pieces
-    _ -> pure unit
+  {gstate, objects} <- H.get
+  void $ H.tell _canvas _canvasN $ GameCanvas.Q_NewState gstate objects
 
 tigLobbySpec :: Lobby.ValuesSpec
 tigLobbySpec = sb do
@@ -183,17 +175,16 @@ component =
   render {m_connection: Nothing} =
     HH.div_ $ sb do
       ae$ HH.slot _wsconnector _wsconnectorN WSConnector.component unit FromWSConnector
-  render {m_connection: Just {ws, my_peerId}, i_am_leader, m_myPiece} =
+  render {m_connection: Just {ws, my_peerId}, i_am_leader, i_am_playing} =
     HH.div_ $ sb do
       ae$ HH.slot _coordinator _coordinatorN 
           Coordinator.component {ws, my_peerId} FromCoordinator
       -- ae$ HH.br_
       ae$ if i_am_leader then HH.hr_ else HH.br_
-      case m_myPiece of
-        Nothing ->
+      if not i_am_playing then
           ae$ HH.slot _lobby _lobbyN 
               Lobby.component {valuesSpec: tigLobbySpec, my_playerId: my_peerId} FromLobby
-        Just _ ->
+      else
           ae$ HH.slot _canvas _canvasN 
               (GameCanvas.component {my_peerId, initGState: initTigState, width: maxX, height: maxY}) unit identity
 
@@ -201,7 +192,7 @@ component =
   handleAction = case _ of
     -- WSConnector tells us we are connected:
     FromWSConnector (WSConnector.O_Connected ws) -> do
-      my_peerId <- liftEffect $ randomInt 0 2000000000
+      my_peerId <- liftEffect $ randomInt minPeerId maxPeerId
       H.modify_ $ _ { m_connection = Just {ws, my_peerId} }
     -- Lobby tells us we can start playing:
     FromLobby (Lobby.O_Play values) -> do
@@ -211,7 +202,7 @@ component =
       case m_connection of
         Just {my_peerId} -> do
           let playerPiece = PlayerPiece.new my_peerId name
-          H.modify_ $ _ { m_myPiece = Just playerPiece }
+          H.modify_ \s -> s { objects = Map.insert my_peerId playerPiece s.objects, i_am_playing = true }
           -- force a tick now to sync with others asap:
           handleAction FrameTick
         _ -> pure unit
@@ -228,79 +219,34 @@ component =
         Just { my_peerId } ->
           H.modify_ $ _ { i_am_leader = leaderId == my_peerId }
         Nothing -> pure unit
-    FromCoordinator (Coordinator.O_PeerJoined _) -> do
-      -- let them know about our player:
-      {m_connection,m_myPiece} <- H.get
-      case m_connection, m_myPiece of
-        Just {my_peerId}, Just myPiece -> do
-          broadcastAction $ SetPlayer my_peerId myPiece
-        _, _ -> pure unit
-      -- -- if we are leading, let them also know of the balls:
-      -- when i_am_leader do
-      --   sequence_ $ map (\(Tuple i b) -> broadcastAction $ SetBall i b) 
-      --     (Map.toUnfoldable balls :: Array _)
+    FromCoordinator (Coordinator.O_PeerJoined _) ->
+      pure unit -- the new player will send us an update soon
     FromCoordinator (Coordinator.O_PeersGone peers) -> do
-      H.modify_ \s -> s { otherPieces = Array.foldl (flip Map.delete) s.otherPieces peers }
+      H.modify_ \s -> s { objects = Array.foldl (flip Map.delete) s.objects peers }
       updateCanvas
       -- let Lobby know:
       void $ H.tell _lobby _lobbyN $ Lobby.Q_ClearPlayers peers
 
-    -- Coordinator relayes messages from peer players:
+    -- Coordinator relays messages from peer players:
     FromCoordinator (Coordinator.O_StateChanges changes) -> do
       case changesToActions changes of
         Left err -> liftEffect $ log err
         Right actions -> sequence_ $ map handleAction actions
 
-    -- SetBall ballId ball -> do
-    --   {m_connection,m_myPiece,gstate} <- H.get
-    --   -- update and redraw ball
-    --   H.modify_ $ \ s -> s { balls = Map.insert ballId ball s.balls }
-    --   updateCanvas
-
-    --   -- have I joined the game?
-    --   case m_connection, m_myPiece of
-    --     Just _, Just myPiece -> do -- joined already
-
-    --       -- check for collision with my piece:
-    --       let collisionCheckResult = 
-    --             (unGO myPiece).handleAction gstate 
-    --               (PlayerPiece.CheckCollidedWith (unGO ball).movingShape)
-    --       case collisionCheckResult of
-    --         { m_object: Just myPiece' } -> do
-    --           H.modify_ $ _ {m_myPiece = Just myPiece' }
-    --           updateCanvas
-    --         _ -> pure unit  
-
-    --     _, _ -> pure unit --  not joined yet, no need to do anything
-
     SetPlayer peerId playerPiece -> do
-      {m_connection,m_myPiece,gstate} <- H.get
+      {i_am_playing} <- H.get
 
-      -- update and redraw piece
-      H.modify_ $ \ s -> s { otherPieces = Map.insert peerId playerPiece s.otherPieces }
-      updateCanvas
+      -- update the piece:
+      H.modify_ $ \ s -> s { objects = Map.insert peerId playerPiece s.objects }
 
       -- have I joined the game?
-      case m_connection, m_myPiece of
-        Just {my_peerId}, Just myPiece -> do -- joined already
-
-          -- check for collision
-          let collisionCheckResult = 
-                (unGO myPiece).applyAction gstate 
-                  (ObjAction.CheckCollidedWith (unGO playerPiece).movingShape)
-          case collisionCheckResult of
-            Just myPiece' ->
-                handleCollisionResult my_peerId peerId myPiece'
-            _ -> pure unit      
-
-        _, _ -> do --  not joined yet, let Lobby know of the player:
-          let { name } = (unGO playerPiece).info
-          let values = Map.singleton "name" name
-          void $ H.tell _lobby _lobbyN $ Lobby.Q_NewPlayer peerId values
+      when (not i_am_playing) do -- let Lobby know of the player:
+        let { name } = (unGO playerPiece).info
+        let values = Map.singleton "name" name
+        void $ H.tell _lobby _lobbyN $ Lobby.Q_NewPlayer peerId values
 
     SetIt it -> do
       H.modify_ $ updateTigState (_ { it = it, itActive = false } )
-      updateCanvas
 
       -- am I it?
       {m_connection} <- H.get
@@ -329,91 +275,117 @@ component =
         _ -> pure unit
 
     FrameTick -> do
-      {m_connection,gstate:{it},otherPieces, i_am_leader} <- H.get
+      {m_connection,gstate:{it},objects,i_am_leader} <- H.get
       -- are we in the game play stage?
       case m_connection of
         Nothing -> pure unit
         Just {my_peerId} -> do
           -- update position and velocity:
-          playerAction $ ObjAction.FrameTick
-
-          when i_am_leader do -- TODO
-            -- add any missing balls
-            -- updte ball position and velocity
-            -- for each ball, identify collisions and deal with them
-            pure unit
+          case i_am_leader of
+            false -> do
+              playerAction ObjAction.FrameTick -- only for my piece
+            true -> do
+              playerAndBallsAction ObjAction.FrameTick -- for my piece and the balls
           
           -- check whether "it" exists and if not, who should become "it":
-          let itGone = my_peerId /= it && (not $ Map.member it otherPieces)
-          let iAmNewIt = case Map.findMin otherPieces of
-                          Just {key: minPeer} -> itGone && my_peerId < minPeer
-                          _ -> itGone
-          when iAmNewIt do
-            -- there is no "it" and we are the player with lowest number, thus we should be it!
-            H.modify_ $ updateTigState $ _ { it = my_peerId }
-            updateCanvas
-            broadcastAction $ SetIt my_peerId
+          let itGone = my_peerId /= it && (not $ Map.member it objects)
+          when itGone do
+            let m_newIt = getNewIt objects
+            let iAmNewIt = maybe true (\newIt -> newIt == my_peerId) m_newIt            
+            when iAmNewIt do
+              -- there is no "it" and we are the player with lowest number, thus we should be it!
+              H.modify_ $ updateTigState $ _ { it = my_peerId }
+              broadcastAction $ SetIt my_peerId
+      updateCanvas
+
+getNewIt :: forall a . Map.Map ObjId a -> Maybe ObjId
+getNewIt objects = 
+  map (_.key) $ Map.findMin $ Map.filterKeys objIdIsPlayer objects
 
 playerAction ::
   forall output . 
   ObjAction -> 
   H.HalogenM GameState Action Slots output Aff Unit
-playerAction p_action = do
-  {m_connection,m_myPiece,gstate,otherPieces} <- H.get
-  case m_connection, m_myPiece of
-    Just {my_peerId}, Just playerPiece1 -> do
-      -- take the player action:
-      let m_newPlayerPiece = (unGO playerPiece1).applyAction gstate p_action
-      -- if my piece changed, take note of it:
-      playerPiece2 <- case m_newPlayerPiece of
-        Nothing -> pure playerPiece1
-        Just newPlayerPiece -> do
-          -- update my piece locally:
-          H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
-          updateCanvas
-          -- update others of my move:
-          broadcastAction $ SetPlayer my_peerId newPlayerPiece
-          pure newPlayerPiece
-
-      -- check for a collision:
-      let m_collisionResult = getCollision my_peerId gstate playerPiece2 otherPieces
-        
-      case m_collisionResult of
-        Nothing -> pure unit
-        Just (Tuple collidedPlayer playerPiece3) -> 
-          handleCollisionResult my_peerId collidedPlayer playerPiece3
-    _,_ -> pure unit
-
-handleCollisionResult :: 
+playerAction = do
+  objectsAction (\{my_id, id} -> id == my_id)
+  
+playerAndBallsAction ::
   forall output . 
-  PeerId -> PlayerId -> TigObject -> 
+  ObjAction -> 
   H.HalogenM GameState Action Slots output Aff Unit
-handleCollisionResult my_peerId collidedPlayer playerPiece' =
-  do -- collision ocurred, bouncing off another piece
-  {gstate:{it,itActive}} <- H.get
-  -- update my piece locally:
-  H.modify_ $ _ {m_myPiece = Just playerPiece' }
-  updateCanvas
-  -- DO NOT send my new position to peers:
-  -- broadcastAction $ SetPlayer my_peerId playerPiece3
+playerAndBallsAction = do
+  objectsAction (\{my_id, id} -> id == my_id || objIdIsBall id)
+  
+objectsAction ::
+  forall output . 
+  ({my_id :: ObjId, id :: ObjId} -> Boolean) -> 
+  ObjAction -> 
+  H.HalogenM GameState Action Slots output Aff Unit
+objectsAction shouldApply' action = do
+  {m_connection,gstate,objects} <- H.get
+  case m_connection of
+    Nothing -> pure unit
+    Just {my_peerId} -> do
+      -- take the player action:
+      objects' <- GameObjectStore.applyAction 
+                    {action, gstate, store: objects, shouldApply, processNewObject}
+      H.modify_ $ _{objects = objects'}
+      where
+      shouldApply id = shouldApply' {my_id: my_peerId, id}
+      processNewObject _ newPlayerPiece = do
+        broadcastAction $ SetPlayer my_peerId newPlayerPiece
 
-  -- if I am it, tig them!
-  when (my_peerId == it && itActive) do
-    -- gotcha! update it locally:
-    H.modify_ $ updateTigState $ _ { it = collidedPlayer }
-    updateCanvas
-    -- and announce new "it":
-    broadcastAction $ SetIt collidedPlayer
+    --   let m_newPlayerPiece = (unGO playerPiece1).applyAction gstate p_action
+    --   -- if my piece changed, take note of it:
+    --   playerPiece2 <- case m_newPlayerPiece of
+    --     Nothing -> pure playerPiece1
+    --     Just newPlayerPiece -> do
+    --       -- update my piece locally:
+    --       H.modify_ $ _ {m_myPiece = Just newPlayerPiece }
+    --       updateCanvas
+    --       -- update others of my move:
+    --       broadcastAction $ SetPlayer my_peerId newPlayerPiece
+    --       pure newPlayerPiece
 
-getCollision :: PeerId -> TigState -> TigObject -> PlayerPieces -> Maybe (Tuple PeerId TigObject)
-getCollision peer1 gstate object1 gameObjects =
-  findCollision (Map.toUnfoldable gameObjects :: List _)
-  where
-  findCollision List.Nil = Nothing
-  findCollision (List.Cons (Tuple id piece) rest) = 
-    if id < peer1
-      then findCollision rest
-      else
-        case (unGO object1).applyAction gstate (ObjAction.CheckCollidedWith (unGO piece).movingShape) of
-          Just object2 -> Just (Tuple id object2)
-          _ -> findCollision rest
+    --   -- check for a collision:
+    --   let m_collisionResult = getCollision my_peerId gstate playerPiece2 otherPieces
+        
+    --   case m_collisionResult of
+    --     Nothing -> pure unit
+    --     Just (Tuple collidedPlayer playerPiece3) -> 
+    --       handleCollisionResult my_peerId collidedPlayer playerPiece3
+    -- _,_ -> pure unit
+
+-- handleCollisionResult :: 
+--   forall output . 
+--   PeerId -> PlayerId -> TigObject -> 
+--   H.HalogenM GameState Action Slots output Aff Unit
+-- handleCollisionResult my_peerId collidedPlayer playerPiece' =
+--   do -- collision ocurred, bouncing off another piece
+--   {gstate:{it,itActive}} <- H.get
+--   -- update my piece locally:
+--   H.modify_ $ _ {m_myPiece = Just playerPiece' }
+--   updateCanvas
+--   -- DO NOT send my new position to peers:
+--   -- broadcastAction $ SetPlayer my_peerId playerPiece3
+
+--   -- if I am it, tig them!
+--   when (my_peerId == it && itActive) do
+--     -- gotcha! update it locally:
+--     H.modify_ $ updateTigState $ _ { it = collidedPlayer }
+--     updateCanvas
+--     -- and announce new "it":
+--     broadcastAction $ SetIt collidedPlayer
+
+-- getCollision :: PeerId -> TigState -> TigObject -> PlayerPieces -> Maybe (Tuple PeerId TigObject)
+-- getCollision peer1 gstate object1 gameObjects =
+--   findCollision (Map.toUnfoldable gameObjects :: List _)
+--   where
+--   findCollision List.Nil = Nothing
+--   findCollision (List.Cons (Tuple id piece) rest) = 
+--     if id < peer1
+--       then findCollision rest
+--       else
+--         case (unGO object1).applyAction gstate (ObjAction.CheckCollidedWith (unGO piece).movingShape) of
+--           Just object2 -> Just (Tuple id object2)
+--           _ -> findCollision rest

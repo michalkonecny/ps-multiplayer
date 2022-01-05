@@ -6048,6 +6048,7 @@ var PS = {};
   var sequence = function (dict) {
       return dict.sequence;
   };
+  exports["traverse"] = traverse;
   exports["sequence"] = sequence;
   exports["traversableArray"] = traversableArray;
   exports["traversableMaybe"] = traversableMaybe;
@@ -7258,9 +7259,12 @@ var PS = {};
   $PS["Data.Map.Internal"] = $PS["Data.Map.Internal"] || {};
   var exports = $PS["Data.Map.Internal"];
   var Control_Applicative = $PS["Control.Applicative"];
+  var Control_Apply = $PS["Control.Apply"];
+  var Control_Category = $PS["Control.Category"];
   var Data_Foldable = $PS["Data.Foldable"];
   var Data_Function = $PS["Data.Function"];
   var Data_Functor = $PS["Data.Functor"];
+  var Data_FunctorWithIndex = $PS["Data.FunctorWithIndex"];
   var Data_List_Lazy = $PS["Data.List.Lazy"];
   var Data_List_Lazy_Types = $PS["Data.List.Lazy.Types"];
   var Data_List_Types = $PS["Data.List.Types"];
@@ -7269,6 +7273,8 @@ var PS = {};
   var Data_Ordering = $PS["Data.Ordering"];
   var Data_Semigroup = $PS["Data.Semigroup"];
   var Data_Show = $PS["Data.Show"];
+  var Data_Traversable = $PS["Data.Traversable"];
+  var Data_TraversableWithIndex = $PS["Data.TraversableWithIndex"];
   var Data_Tuple = $PS["Data.Tuple"];
   var Data_Unfoldable = $PS["Data.Unfoldable"];                
   var Leaf = (function () {
@@ -7643,6 +7649,25 @@ var PS = {};
               };
               throw new Error("Failed pattern match at Data.Map.Internal (line 101, column 1 - line 104, column 110): " + [ v.constructor.name, v1.constructor.name ]);
           };
+      }
+  };
+  var functorWithIndexMap = {
+      mapWithIndex: function (v) {
+          return function (v1) {
+              if (v1 instanceof Leaf) {
+                  return Leaf.value;
+              };
+              if (v1 instanceof Two) {
+                  return new Two(Data_FunctorWithIndex.mapWithIndex(functorWithIndexMap)(v)(v1.value0), v1.value1, v(v1.value1)(v1.value2), Data_FunctorWithIndex.mapWithIndex(functorWithIndexMap)(v)(v1.value3));
+              };
+              if (v1 instanceof Three) {
+                  return new Three(Data_FunctorWithIndex.mapWithIndex(functorWithIndexMap)(v)(v1.value0), v1.value1, v(v1.value1)(v1.value2), Data_FunctorWithIndex.mapWithIndex(functorWithIndexMap)(v)(v1.value3), v1.value4, v(v1.value4)(v1.value5), Data_FunctorWithIndex.mapWithIndex(functorWithIndexMap)(v)(v1.value6));
+              };
+              throw new Error("Failed pattern match at Data.Map.Internal (line 106, column 1 - line 109, column 152): " + [ v.constructor.name, v1.constructor.name ]);
+          };
+      },
+      Functor0: function () {
+          return functorMap;
       }
   };
   var fromZipper = function ($copy_dictOrd) {
@@ -8073,6 +8098,33 @@ var PS = {};
           };
       }
   };
+  var traversableMap = {
+      traverse: function (dictApplicative) {
+          return function (v) {
+              return function (v1) {
+                  if (v1 instanceof Leaf) {
+                      return Control_Applicative.pure(dictApplicative)(Leaf.value);
+                  };
+                  if (v1 instanceof Two) {
+                      return Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Data_Functor.map((dictApplicative.Apply0()).Functor0())(Two.create)(Data_Traversable.traverse(traversableMap)(dictApplicative)(v)(v1.value0)))(Control_Applicative.pure(dictApplicative)(v1.value1)))(v(v1.value2)))(Data_Traversable.traverse(traversableMap)(dictApplicative)(v)(v1.value3));
+                  };
+                  if (v1 instanceof Three) {
+                      return Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Data_Functor.map((dictApplicative.Apply0()).Functor0())(Three.create)(Data_Traversable.traverse(traversableMap)(dictApplicative)(v)(v1.value0)))(Control_Applicative.pure(dictApplicative)(v1.value1)))(v(v1.value2)))(Data_Traversable.traverse(traversableMap)(dictApplicative)(v)(v1.value3)))(Control_Applicative.pure(dictApplicative)(v1.value4)))(v(v1.value5)))(Data_Traversable.traverse(traversableMap)(dictApplicative)(v)(v1.value6));
+                  };
+                  throw new Error("Failed pattern match at Data.Map.Internal (line 127, column 1 - line 142, column 31): " + [ v.constructor.name, v1.constructor.name ]);
+              };
+          };
+      },
+      sequence: function (dictApplicative) {
+          return Data_Traversable.traverse(traversableMap)(dictApplicative)(Control_Category.identity(Control_Category.categoryFn));
+      },
+      Functor0: function () {
+          return functorMap;
+      },
+      Foldable1: function () {
+          return foldableMap;
+      }
+  };
   var findMin = (function () {
       var go = function ($copy_v) {
           return function ($copy_v1) {
@@ -8186,6 +8238,65 @@ var PS = {};
           };
       };
   };
+  var asList = Control_Category.identity(Control_Category.categoryFn);
+  var foldableWithIndexMap = {
+      foldlWithIndex: function (f) {
+          return function (z) {
+              return function (m) {
+                  return Data_Foldable.foldl(Data_List_Types.foldableList)((function () {
+                      var $769 = Data_Function.flip(f);
+                      return function ($770) {
+                          return Data_Tuple.uncurry($769($770));
+                      };
+                  })())(z)(asList(toUnfoldable(Data_List_Types.unfoldableList)(m)));
+              };
+          };
+      },
+      foldrWithIndex: function (f) {
+          return function (z) {
+              return function (m) {
+                  return Data_Foldable.foldr(Data_List_Types.foldableList)(Data_Tuple.uncurry(f))(z)(asList(toUnfoldable(Data_List_Types.unfoldableList)(m)));
+              };
+          };
+      },
+      foldMapWithIndex: function (dictMonoid) {
+          return function (f) {
+              return function (m) {
+                  return Data_Foldable.foldMap(Data_List_Types.foldableList)(dictMonoid)(Data_Tuple.uncurry(f))(asList(toUnfoldable(Data_List_Types.unfoldableList)(m)));
+              };
+          };
+      },
+      Foldable0: function () {
+          return foldableMap;
+      }
+  };
+  var traversableWithIndexMap = {
+      traverseWithIndex: function (dictApplicative) {
+          return function (v) {
+              return function (v1) {
+                  if (v1 instanceof Leaf) {
+                      return Control_Applicative.pure(dictApplicative)(Leaf.value);
+                  };
+                  if (v1 instanceof Two) {
+                      return Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Data_Functor.map((dictApplicative.Apply0()).Functor0())(Two.create)(Data_TraversableWithIndex.traverseWithIndex(traversableWithIndexMap)(dictApplicative)(v)(v1.value0)))(Control_Applicative.pure(dictApplicative)(v1.value1)))(v(v1.value1)(v1.value2)))(Data_TraversableWithIndex.traverseWithIndex(traversableWithIndexMap)(dictApplicative)(v)(v1.value3));
+                  };
+                  if (v1 instanceof Three) {
+                      return Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Control_Apply.apply(dictApplicative.Apply0())(Data_Functor.map((dictApplicative.Apply0()).Functor0())(Three.create)(Data_TraversableWithIndex.traverseWithIndex(traversableWithIndexMap)(dictApplicative)(v)(v1.value0)))(Control_Applicative.pure(dictApplicative)(v1.value1)))(v(v1.value1)(v1.value2)))(Data_TraversableWithIndex.traverseWithIndex(traversableWithIndexMap)(dictApplicative)(v)(v1.value3)))(Control_Applicative.pure(dictApplicative)(v1.value4)))(v(v1.value4)(v1.value5)))(Data_TraversableWithIndex.traverseWithIndex(traversableWithIndexMap)(dictApplicative)(v)(v1.value6));
+                  };
+                  throw new Error("Failed pattern match at Data.Map.Internal (line 144, column 1 - line 158, column 40): " + [ v.constructor.name, v1.constructor.name ]);
+              };
+          };
+      },
+      FunctorWithIndex0: function () {
+          return functorWithIndexMap;
+      },
+      FoldableWithIndex1: function () {
+          return foldableWithIndexMap;
+      },
+      Traversable2: function () {
+          return traversableMap;
+      }
+  };
   var alter = function (dictOrd) {
       return function (f) {
           return function (k) {
@@ -8217,12 +8328,12 @@ var PS = {};
   exports["member"] = member;
   exports["alter"] = alter;
   exports["keys"] = keys;
-  exports["values"] = values;
   exports["filterKeys"] = filterKeys;
   exports["filter"] = filter;
   exports["showMap"] = showMap;
   exports["functorMap"] = functorMap;
   exports["foldableMap"] = foldableMap;
+  exports["traversableWithIndexMap"] = traversableWithIndexMap;
 })(PS);
 (function($PS) {
   // Generated by purs version 0.14.5
@@ -9152,6 +9263,7 @@ var PS = {};
   exports["functorHalogenM"] = functorHalogenM;
   exports["applicativeHalogenM"] = applicativeHalogenM;
   exports["bindHalogenM"] = bindHalogenM;
+  exports["monadHalogenM"] = monadHalogenM;
   exports["monadEffectHalogenM"] = monadEffectHalogenM;
   exports["monadAffHalogenM"] = monadAffHalogenM;
   exports["monadStateHalogenM"] = monadStateHalogenM;
@@ -13940,7 +14052,18 @@ var PS = {};
   exports["component"] = component;
 })(PS);
 (function($PS) {
-  // Generated by purs version 0.14.5
+  
+  /**
+ * |
+ *     Module      :  Purlay.Examples.TigGame.Global
+ *     Description :  Global constants and state
+ *     Copyright   :  (c) Michal Konecny 2021
+ *     License     :  BSD3
+ * 
+ *     Maintainer  :  mikkonecny@gmail.com
+ *     Stability   :  experimental
+ *     Portability :  portable
+ */  
   "use strict";
   $PS["Purlay.Examples.TigGame.Global"] = $PS["Purlay.Examples.TigGame.Global"] || {};
   var exports = $PS["Purlay.Examples.TigGame.Global"];
@@ -14006,9 +14129,19 @@ var PS = {};
       };
       return CheckCollidedWith;
   })();
+
+  // import Prelude
   var tickPeriod_ms = 50.0;
+  var minPeerId = 1000;
+  var objIdIsBall = function (id) {
+      return id < minPeerId;
+  };
+  var objIdIsPlayer = function (id) {
+      return id >= minPeerId;
+  };
   var maxY = 800.0;
   var maxX = 800.0;
+  var maxPeerId = 2000000000;
   var initTigState = {
       it: 0,
       itActive: true
@@ -14025,6 +14158,10 @@ var PS = {};
   exports["PushStart"] = PushStart;
   exports["PushStop"] = PushStop;
   exports["CheckCollidedWith"] = CheckCollidedWith;
+  exports["minPeerId"] = minPeerId;
+  exports["maxPeerId"] = maxPeerId;
+  exports["objIdIsPlayer"] = objIdIsPlayer;
+  exports["objIdIsBall"] = objIdIsBall;
 })(PS);
 (function($PS) {
   // Generated by purs version 0.14.5
@@ -14384,18 +14521,7 @@ var PS = {};
   exports["decodeJsonConsistency"] = decodeJsonConsistency;
 })(PS);
 (function($PS) {
-  
-  /**
- * |
- *     Module      :  Purlay.Examples.TigGame.PlayerPiece
- *     Description :  A player's piece
- *     Copyright   :  (c) Michal Konecny 2021
- *     License     :  BSD3
- * 
- *     Maintainer  :  mikkonecny@gmail.com
- *     Stability   :  experimental
- *     Portability :  portable
- */  
+  // Generated by purs version 0.14.5
   "use strict";
   $PS["Purlay.Examples.TigGame.PlayerPiece"] = $PS["Purlay.Examples.TigGame.PlayerPiece"] || {};
   var exports = $PS["Purlay.Examples.TigGame.PlayerPiece"];
@@ -14798,7 +14924,6 @@ var PS = {};
   exports["fromJson"] = fromJson;
 })(PS);
 (function($PS) {
-  // Generated by purs version 0.14.5
   "use strict";
   $PS["Purlay.GameCanvas"] = $PS["Purlay.GameCanvas"] || {};
   var exports = $PS["Purlay.GameCanvas"];
@@ -14809,7 +14934,7 @@ var PS = {};
   var Data_Function = $PS["Data.Function"];
   var Data_Functor = $PS["Data.Functor"];
   var Data_Int = $PS["Data.Int"];
-  var Data_List_Types = $PS["Data.List.Types"];
+  var Data_Map_Internal = $PS["Data.Map.Internal"];
   var Data_Maybe = $PS["Data.Maybe"];
   var Data_Traversable = $PS["Data.Traversable"];
   var Data_Unit = $PS["Data.Unit"];
@@ -14838,6 +14963,12 @@ var PS = {};
       };
       return Q_NewState;
   })();
+
+  /**
+ * 
+ *   Adapted from https://gist.github.com/smilack/11c2fbb48fd85d811999880388e4fa9e
+ *   "PureScript Halogen demo for drawing on a canvas using Hooks"
+ */  
   var component = function (dictMonadAff) {
       return function (v) {
           var drawOnCanvas = function (gobjs) {
@@ -14854,7 +14985,7 @@ var PS = {};
                       };
                       return Effect_Class.liftEffect(Halogen_Hooks_HookM.monadEffectHookM(dictMonadAff.MonadEffect0()))(function __do() {
                           drawBoard();
-                          return Data_Foldable.traverse_(Effect.applicativeEffect)(Data_List_Types.foldableList)(function (go) {
+                          return Data_Foldable.traverse_(Effect.applicativeEffect)(Data_Map_Internal.foldableMap)(function (go) {
                               return (Purlay_GameObject.unGO(go)).draw(v.my_peerId)(gstate)(context);
                           })(gobjs)();
                       });
@@ -14872,7 +15003,7 @@ var PS = {};
           };
           return Halogen_Hooks_Component.component(function (v1) {
               return function (v2) {
-                  return Halogen_Hooks_Hook.bind(Halogen_Hooks.useState(Data_List_Types.Nil.value))(function (v3) {
+                  return Halogen_Hooks_Hook.bind(Halogen_Hooks.useState(Data_Map_Internal.empty))(function (v3) {
                       return Halogen_Hooks_Hook.bind(Halogen_Hooks.useState(v.initGState))(function (v4) {
                           return Halogen_Hooks_Hook.discard(Halogen_Hooks.useQuery(v1.queryToken)(function (v5) {
                               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Hooks_HookM.bindHookM)(Halogen_Hooks_HookM.modify_(v3.value1)(Data_Function["const"](v5.value1)))(function () {
@@ -14893,6 +15024,47 @@ var PS = {};
   };
   exports["Q_NewState"] = Q_NewState;
   exports["component"] = component;
+})(PS);
+(function($PS) {
+  // Generated by purs version 0.14.5
+  "use strict";
+  $PS["Purlay.GameObjectStore"] = $PS["Purlay.GameObjectStore"] || {};
+  var exports = $PS["Purlay.GameObjectStore"];
+  var Control_Applicative = $PS["Control.Applicative"];
+  var Control_Bind = $PS["Control.Bind"];
+  var Data_Boolean = $PS["Data.Boolean"];
+  var Data_Map_Internal = $PS["Data.Map.Internal"];
+  var Data_Maybe = $PS["Data.Maybe"];
+  var Data_TraversableWithIndex = $PS["Data.TraversableWithIndex"];
+  var Purlay_GameObject = $PS["Purlay.GameObject"];
+  var applyAction = function (dictOrd) {
+      return function (dictMonad) {
+          return function (v) {
+              var maybeApply = function (index) {
+                  return function (go) {
+                      if (v.shouldApply(index)) {
+                          var v1 = (Purlay_GameObject.unGO(go)).applyAction(v.gstate)(v.action);
+                          if (v1 instanceof Data_Maybe.Nothing) {
+                              return Control_Applicative.pure(dictMonad.Applicative0())(go);
+                          };
+                          if (v1 instanceof Data_Maybe.Just) {
+                              return Control_Bind.discard(Control_Bind.discardUnit)(dictMonad.Bind1())(v.processNewObject(index)(v1.value0))(function () {
+                                  return Control_Applicative.pure(dictMonad.Applicative0())(v1.value0);
+                              });
+                          };
+                          throw new Error("Failed pattern match at Purlay.GameObjectStore (line 32, column 7 - line 36, column 21): " + [ v1.constructor.name ]);
+                      };
+                      if (Data_Boolean.otherwise) {
+                          return Control_Applicative.pure(dictMonad.Applicative0())(go);
+                      };
+                      throw new Error("Failed pattern match at Purlay.GameObjectStore (line 30, column 3 - line 37, column 26): " + [ index.constructor.name, go.constructor.name ]);
+                  };
+              };
+              return Data_TraversableWithIndex.traverseWithIndex(Data_Map_Internal.traversableWithIndexMap)(dictMonad.Applicative0())(maybeApply)(v.store);
+          };
+      };
+  };
+  exports["applyAction"] = applyAction;
 })(PS);
 (function($PS) {
   
@@ -15338,14 +15510,12 @@ var PS = {};
   var Data_Function = $PS["Data.Function"];
   var Data_Functor = $PS["Data.Functor"];
   var Data_Int = $PS["Data.Int"];
-  var Data_List_Types = $PS["Data.List.Types"];
   var Data_Map_Internal = $PS["Data.Map.Internal"];
   var Data_Maybe = $PS["Data.Maybe"];
   var Data_Monoid = $PS["Data.Monoid"];
   var Data_Ord = $PS["Data.Ord"];
   var Data_Show = $PS["Data.Show"];
   var Data_Traversable = $PS["Data.Traversable"];
-  var Data_Tuple = $PS["Data.Tuple"];
   var Data_Unit = $PS["Data.Unit"];
   var Effect_Aff = $PS["Effect.Aff"];
   var Effect_Aff_Class = $PS["Effect.Aff.Class"];
@@ -15364,6 +15534,7 @@ var PS = {};
   var Purlay_Examples_TigGame_PlayerPiece = $PS["Purlay.Examples.TigGame.PlayerPiece"];
   var Purlay_GameCanvas = $PS["Purlay.GameCanvas"];
   var Purlay_GameObject = $PS["Purlay.GameObject"];
+  var Purlay_GameObjectStore = $PS["Purlay.GameObjectStore"];
   var Purlay_HalogenHelpers = $PS["Purlay.HalogenHelpers"];
   var Purlay_Lobby = $PS["Purlay.Lobby"];
   var Purlay_WSConnector = $PS["Purlay.WSConnector"];
@@ -15453,9 +15624,9 @@ var PS = {};
           return {
               m_connection: v.m_connection,
               i_am_leader: v.i_am_leader,
+              i_am_playing: v.i_am_playing,
               gstate: f(v.gstate),
-              m_myPiece: v.m_myPiece,
-              otherPieces: v.otherPieces
+              objects: v.objects
           };
       };
   };
@@ -15470,47 +15641,14 @@ var PS = {};
   var initialGameState = {
       m_connection: Data_Maybe.Nothing.value,
       i_am_leader: false,
+      i_am_playing: false,
       gstate: Purlay_Examples_TigGame_Global.initTigState,
-      m_myPiece: Data_Maybe.Nothing.value,
-      otherPieces: Data_Map_Internal.empty
+      objects: Data_Map_Internal.empty
   };
-  var getCollision = function (peer1) {
-      return function (gstate) {
-          return function (object1) {
-              return function (gameObjects) {
-                  var findCollision = function ($copy_v) {
-                      var $tco_done = false;
-                      var $tco_result;
-                      function $tco_loop(v) {
-                          if (v instanceof Data_List_Types.Nil) {
-                              $tco_done = true;
-                              return Data_Maybe.Nothing.value;
-                          };
-                          if (v instanceof Data_List_Types.Cons) {
-                              var $42 = v.value0.value0 < peer1;
-                              if ($42) {
-                                  $copy_v = v.value1;
-                                  return;
-                              };
-                              var v1 = (Purlay_GameObject.unGO(object1)).applyAction(gstate)(new Purlay_Examples_TigGame_Global.CheckCollidedWith((Purlay_GameObject.unGO(v.value0.value1)).movingShape));
-                              if (v1 instanceof Data_Maybe.Just) {
-                                  $tco_done = true;
-                                  return new Data_Maybe.Just(new Data_Tuple.Tuple(v.value0.value0, v1.value0));
-                              };
-                              $copy_v = v.value1;
-                              return;
-                          };
-                          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 412, column 3 - line 412, column 35): " + [ v.constructor.name ]);
-                      };
-                      while (!$tco_done) {
-                          $tco_result = $tco_loop($copy_v);
-                      };
-                      return $tco_result;
-                  };
-                  return findCollision(Data_Map_Internal.toUnfoldable(Data_List_Types.unfoldableList)(gameObjects));
-              };
-          };
-      };
+  var getNewIt = function (objects) {
+      return Data_Functor.map(Data_Maybe.functorMaybe)(function (v) {
+          return v.key;
+      })(Data_Map_Internal.findMin(Data_Map_Internal.filterKeys(Data_Ord.ordInt)(Purlay_Examples_TigGame_Global.objIdIsPlayer)(objects)));
   };
 
   // boilerplate for broadcasting and receiving actions via Coordinator:
@@ -15524,7 +15662,7 @@ var PS = {};
               if (v1 instanceof Data_Either.Left) {
                   return Data_Either.Left.create("failed to parse `it`: " + Data_Show.show(Data_Argonaut_Decode_Error.showJsonDecodeError)(v1.value0));
               };
-              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 107, column 5 - line 109, column 62): " + [ v1.constructor.name ]);
+              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 103, column 5 - line 105, column 62): " + [ v1.constructor.name ]);
           };
           var v1 = Purlay_Examples_TigGame_PlayerPiece.fromJson(v.value);
           var v2 = Data_Int.fromString(v.name);
@@ -15576,91 +15714,62 @@ var PS = {};
           }
       })(Data_Ord.ordInt)(_coordinator)(_coordinatorN)(Purlay_Coordinator.Q_StateChanges.create(actionToChanges(action))));
   };
+  var objectsAction = function (shouldApply$prime) {
+      return function (action) {
+          return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
+              if (v.m_connection instanceof Data_Maybe.Nothing) {
+                  return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
+              };
+              if (v.m_connection instanceof Data_Maybe.Just) {
+                  var shouldApply = function (id) {
+                      return shouldApply$prime({
+                          my_id: v.m_connection.value0.my_peerId,
+                          id: id
+                      });
+                  };
+                  var processNewObject = function (v1) {
+                      return function (newPlayerPiece) {
+                          return broadcastAction(new SetPlayer(v.m_connection.value0.my_peerId, newPlayerPiece));
+                      };
+                  };
+                  return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Purlay_GameObjectStore.applyAction(Data_Ord.ordInt)(Halogen_Query_HalogenM.monadHalogenM)({
+                      action: action,
+                      gstate: v.gstate,
+                      store: v.objects,
+                      shouldApply: shouldApply,
+                      processNewObject: processNewObject
+                  }))(function (objects$prime) {
+                      return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
+                          var $56 = {};
+                          for (var $57 in v1) {
+                              if ({}.hasOwnProperty.call(v1, $57)) {
+                                  $56[$57] = v1[$57];
+                              };
+                          };
+                          $56.objects = objects$prime;
+                          return $56;
+                      });
+                  });
+              };
+              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 326, column 3 - line 336, column 61): " + [ v.m_connection.constructor.name ]);
+          });
+      };
+  };
+  var playerAction = objectsAction(function (v) {
+      return v.id === v.my_id;
+  });
+  var playerAndBallsAction = objectsAction(function (v) {
+      return v.id === v.my_id || Purlay_Examples_TigGame_Global.objIdIsBall(v.id);
+  });
   var _canvasN = 3;
   var _canvas = Type_Proxy["Proxy"].value;
   var updateCanvas = Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
-      if (v.m_myPiece instanceof Data_Maybe.Just) {
-          var pieces = Data_List_Types.Cons.create(v.m_myPiece.value0)(Data_Map_Internal.values(v.otherPieces));
-          return Data_Functor["void"](Halogen_Query_HalogenM.functorHalogenM)(Halogen_Query.tell()({
-              reflectSymbol: function () {
-                  return "canvas";
-              }
-          })(Data_Ord.ordInt)(_canvas)(_canvasN)(Purlay_GameCanvas.Q_NewState.create(v.gstate)(pieces)));
-      };
-      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
+      return Data_Functor["void"](Halogen_Query_HalogenM.functorHalogenM)(Halogen_Query.tell()({
+          reflectSymbol: function () {
+              return "canvas";
+          }
+      })(Data_Ord.ordInt)(_canvas)(_canvasN)(Purlay_GameCanvas.Q_NewState.create(v.gstate)(v.objects)));
   });
-  var handleCollisionResult = function (my_peerId) {
-      return function (collidedPlayer) {
-          return function (playerPiece$prime) {
-              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
-                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                      var $72 = {};
-                      for (var $73 in v1) {
-                          if ({}.hasOwnProperty.call(v1, $73)) {
-                              $72[$73] = v1[$73];
-                          };
-                      };
-                      $72.m_myPiece = new Data_Maybe.Just(playerPiece$prime);
-                      return $72;
-                  }))(function () {
-                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
-                          return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(my_peerId === v.gstate.it && v.gstate.itActive)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateTigState(function (v1) {
-                              return {
-                                  it: collidedPlayer,
-                                  itActive: v1.itActive
-                              };
-                          })))(function () {
-                              return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
-                                  return broadcastAction(new SetIt(collidedPlayer));
-                              });
-                          }));
-                      });
-                  });
-              });
-          };
-      };
-  };
-  var playerAction = function (p_action) {
-      return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v) {
-          if (v.m_connection instanceof Data_Maybe.Just && v.m_myPiece instanceof Data_Maybe.Just) {
-              var m_newPlayerPiece = (Purlay_GameObject.unGO(v.m_myPiece.value0)).applyAction(v.gstate)(p_action);
-              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)((function () {
-                  if (m_newPlayerPiece instanceof Data_Maybe.Nothing) {
-                      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(v.m_myPiece.value0);
-                  };
-                  if (m_newPlayerPiece instanceof Data_Maybe.Just) {
-                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                          var $82 = {};
-                          for (var $83 in v1) {
-                              if ({}.hasOwnProperty.call(v1, $83)) {
-                                  $82[$83] = v1[$83];
-                              };
-                          };
-                          $82.m_myPiece = new Data_Maybe.Just(m_newPlayerPiece.value0);
-                          return $82;
-                      }))(function () {
-                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
-                              return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(broadcastAction(new SetPlayer(v.m_connection.value0.my_peerId, m_newPlayerPiece.value0)))(function () {
-                                  return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(m_newPlayerPiece.value0);
-                              });
-                          });
-                      });
-                  };
-                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 368, column 23 - line 376, column 30): " + [ m_newPlayerPiece.constructor.name ]);
-              })())(function (playerPiece2) {
-                  var m_collisionResult = getCollision(v.m_connection.value0.my_peerId)(v.gstate)(playerPiece2)(v.otherPieces);
-                  if (m_collisionResult instanceof Data_Maybe.Nothing) {
-                      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-                  };
-                  if (m_collisionResult instanceof Data_Maybe.Just) {
-                      return handleCollisionResult(v.m_connection.value0.my_peerId)(m_collisionResult.value0.value0)(m_collisionResult.value0.value1);
-                  };
-                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 381, column 7 - line 384, column 70): " + [ m_collisionResult.constructor.name ]);
-              });
-          };
-          return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-      });
-  };
   var component = (function () {
       var render = function (v) {
           if (v.m_connection instanceof Data_Maybe.Nothing) {
@@ -15685,7 +15794,8 @@ var PS = {};
                       };
                       return Halogen_HTML_Elements.br_;
                   })()))(function () {
-                      if (v.m_myPiece instanceof Data_Maybe.Nothing) {
+                      var $76 = !v.i_am_playing;
+                      if ($76) {
                           return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML.slot()({
                               reflectSymbol: function () {
                                   return "lobby";
@@ -15695,39 +15805,36 @@ var PS = {};
                               my_playerId: v.m_connection.value0.my_peerId
                           })(FromLobby.create));
                       };
-                      if (v.m_myPiece instanceof Data_Maybe.Just) {
-                          return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML.slot()({
-                              reflectSymbol: function () {
-                                  return "canvas";
-                              }
-                          })(Data_Ord.ordInt)(_canvas)(_canvasN)(Purlay_GameCanvas.component(Effect_Aff_Class.monadAffAff)({
-                              my_peerId: v.m_connection.value0.my_peerId,
-                              initGState: Purlay_Examples_TigGame_Global.initTigState,
-                              width: Purlay_Examples_TigGame_Global.maxX,
-                              height: Purlay_Examples_TigGame_Global.maxY
-                          }))(Data_Unit.unit)(Control_Category.identity(Control_Category.categoryFn)));
-                      };
-                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 192, column 7 - line 198, column 116): " + [ v.m_myPiece.constructor.name ]);
+                      return Control_SequenceBuildMonad.ae(Control_Applicative.applicativeArray)(Halogen_HTML.slot()({
+                          reflectSymbol: function () {
+                              return "canvas";
+                          }
+                      })(Data_Ord.ordInt)(_canvas)(_canvasN)(Purlay_GameCanvas.component(Effect_Aff_Class.monadAffAff)({
+                          my_peerId: v.m_connection.value0.my_peerId,
+                          initGState: Purlay_Examples_TigGame_Global.initTigState,
+                          width: Purlay_Examples_TigGame_Global.maxX,
+                          height: Purlay_Examples_TigGame_Global.maxY
+                      }))(Data_Unit.unit)(Control_Category.identity(Control_Category.categoryFn)));
                   });
               })));
           };
-          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 183, column 3 - line 185, column 88): " + [ v.constructor.name ]);
+          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 175, column 3 - line 177, column 88): " + [ v.constructor.name ]);
       };
       var handleAction = function (v) {
           if (v instanceof FromWSConnector) {
-              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Random.randomInt(0)(2000000000)))(function (my_peerId) {
+              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Effect_Class.liftEffect(Halogen_Query_HalogenM.monadEffectHalogenM(Effect_Aff.monadEffectAff))(Effect_Random.randomInt(Purlay_Examples_TigGame_Global.minPeerId)(Purlay_Examples_TigGame_Global.maxPeerId)))(function (my_peerId) {
                   return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v1) {
-                      var $109 = {};
-                      for (var $110 in v1) {
-                          if ({}.hasOwnProperty.call(v1, $110)) {
-                              $109[$110] = v1[$110];
+                      var $84 = {};
+                      for (var $85 in v1) {
+                          if ({}.hasOwnProperty.call(v1, $85)) {
+                              $84[$85] = v1[$85];
                           };
                       };
-                      $109.m_connection = new Data_Maybe.Just({
+                      $84.m_connection = new Data_Maybe.Just({
                           ws: v.value0.value0,
                           my_peerId: my_peerId
                       });
-                      return $109;
+                      return $84;
                   });
               });
           };
@@ -15737,15 +15844,16 @@ var PS = {};
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)((function () {
                       if (v1.m_connection instanceof Data_Maybe.Just) {
                           var playerPiece = Purlay_Examples_TigGame_PlayerPiece["new"](v1.m_connection.value0.my_peerId)(name);
-                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                              var $116 = {};
-                              for (var $117 in v2) {
-                                  if ({}.hasOwnProperty.call(v2, $117)) {
-                                      $116[$117] = v2[$117];
+                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
+                              var $91 = {};
+                              for (var $92 in s) {
+                                  if ({}.hasOwnProperty.call(s, $92)) {
+                                      $91[$92] = s[$92];
                                   };
                               };
-                              $116.m_myPiece = new Data_Maybe.Just(playerPiece);
-                              return $116;
+                              $91.objects = Data_Map_Internal.insert(Data_Ord.ordInt)(v1.m_connection.value0.my_peerId)(playerPiece)(s.objects);
+                              $91.i_am_playing = true;
+                              return $91;
                           }))(function () {
                               return handleAction(FrameTick.value);
                           });
@@ -15762,40 +15870,35 @@ var PS = {};
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
                   if (v1.m_connection instanceof Data_Maybe.Just) {
                       return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (v2) {
-                          var $126 = {};
-                          for (var $127 in v2) {
-                              if ({}.hasOwnProperty.call(v2, $127)) {
-                                  $126[$127] = v2[$127];
+                          var $101 = {};
+                          for (var $102 in v2) {
+                              if ({}.hasOwnProperty.call(v2, $102)) {
+                                  $101[$102] = v2[$102];
                               };
                           };
-                          $126.i_am_leader = v.value0.value0 === v1.m_connection.value0.my_peerId;
-                          return $126;
+                          $101.i_am_leader = v.value0.value0 === v1.m_connection.value0.my_peerId;
+                          return $101;
                       });
                   };
                   if (v1.m_connection instanceof Data_Maybe.Nothing) {
                       return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
                   };
-                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 227, column 7 - line 230, column 29): " + [ v1.m_connection.constructor.name ]);
+                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 218, column 7 - line 221, column 29): " + [ v1.m_connection.constructor.name ]);
               });
           };
           if (v instanceof FromCoordinator && v.value0 instanceof Purlay_Coordinator.O_PeerJoined) {
-              return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
-                  if (v1.m_connection instanceof Data_Maybe.Just && v1.m_myPiece instanceof Data_Maybe.Just) {
-                      return broadcastAction(new SetPlayer(v1.m_connection.value0.my_peerId, v1.m_myPiece.value0));
-                  };
-                  return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-              });
+              return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
           };
           if (v instanceof FromCoordinator && v.value0 instanceof Purlay_Coordinator.O_PeersGone) {
               return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                  var $144 = {};
-                  for (var $145 in s) {
-                      if ({}.hasOwnProperty.call(s, $145)) {
-                          $144[$145] = s[$145];
+                  var $111 = {};
+                  for (var $112 in s) {
+                      if ({}.hasOwnProperty.call(s, $112)) {
+                          $111[$112] = s[$112];
                       };
                   };
-                  $144.otherPieces = Data_Array.foldl(Data_Function.flip(Data_Map_Internal["delete"](Data_Ord.ordInt)))(s.otherPieces)(v.value0.value0);
-                  return $144;
+                  $111.objects = Data_Array.foldl(Data_Function.flip(Data_Map_Internal["delete"](Data_Ord.ordInt)))(s.objects)(v.value0.value0);
+                  return $111;
               }))(function () {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
                       return Data_Functor["void"](Halogen_Query_HalogenM.functorHalogenM)(Halogen_Query.tell()({
@@ -15814,28 +15917,21 @@ var PS = {};
               if (v1 instanceof Data_Either.Right) {
                   return Data_Foldable.sequence_(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Foldable.foldableArray)(Data_Functor.map(Data_Functor.functorArray)(handleAction)(v1.value0));
               };
-              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 250, column 7 - line 252, column 62): " + [ v1.constructor.name ]);
+              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 232, column 7 - line 234, column 62): " + [ v1.constructor.name ]);
           };
           if (v instanceof SetPlayer) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
                   return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(function (s) {
-                      var $155 = {};
-                      for (var $156 in s) {
-                          if ({}.hasOwnProperty.call(s, $156)) {
-                              $155[$156] = s[$156];
+                      var $122 = {};
+                      for (var $123 in s) {
+                          if ({}.hasOwnProperty.call(s, $123)) {
+                              $122[$123] = s[$123];
                           };
                       };
-                      $155.otherPieces = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(v.value1)(s.otherPieces);
-                      return $155;
+                      $122.objects = Data_Map_Internal.insert(Data_Ord.ordInt)(v.value0)(v.value1)(s.objects);
+                      return $122;
                   }))(function () {
-                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
-                          if (v1.m_connection instanceof Data_Maybe.Just && v1.m_myPiece instanceof Data_Maybe.Just) {
-                              var collisionCheckResult = (Purlay_GameObject.unGO(v1.m_myPiece.value0)).applyAction(v1.gstate)(new Purlay_Examples_TigGame_Global.CheckCollidedWith((Purlay_GameObject.unGO(v.value1)).movingShape));
-                              if (collisionCheckResult instanceof Data_Maybe.Just) {
-                                  return handleCollisionResult(v1.m_connection.value0.my_peerId)(v.value0)(collisionCheckResult.value0);
-                              };
-                              return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-                          };
+                      return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(!v1.i_am_playing)((function () {
                           var v2 = (Purlay_GameObject.unGO(v.value1)).info;
                           var values = Data_Map_Internal.singleton("name")(v2.name);
                           return Data_Functor["void"](Halogen_Query_HalogenM.functorHalogenM)(Halogen_Query.tell()({
@@ -15843,7 +15939,7 @@ var PS = {};
                                   return "lobby";
                               }
                           })(Data_Ord.ordInt)(_lobby)(_lobbyN)(Purlay_Lobby.Q_NewPlayer.create(v.value0)(values)));
-                      });
+                      })());
                   });
               });
           };
@@ -15854,20 +15950,18 @@ var PS = {};
                       itActive: false
                   };
               })))(function () {
-                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
-                      return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
-                          if (v1.m_connection instanceof Data_Maybe.Just && v.value0 === v1.m_connection.value0.my_peerId) {
-                              return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(1000.0)))(function () {
-                                  return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateTigState(function (v2) {
-                                      return {
-                                          it: v2.it,
-                                          itActive: true
-                                      };
-                                  }));
-                              });
-                          };
-                          return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-                      });
+                  return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
+                      if (v1.m_connection instanceof Data_Maybe.Just && v.value0 === v1.m_connection.value0.my_peerId) {
+                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Effect_Aff_Class.liftAff(Halogen_Query_HalogenM.monadAffHalogenM(Effect_Aff_Class.monadAffAff))(Effect_Aff.delay(1000.0)))(function () {
+                              return Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateTigState(function (v2) {
+                                  return {
+                                      it: v2.it,
+                                      itActive: true
+                                  };
+                              }));
+                          });
+                      };
+                      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
                   });
               });
           };
@@ -15905,37 +15999,44 @@ var PS = {};
           };
           if (v instanceof FrameTick) {
               return Control_Bind.bind(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.get(Halogen_Query_HalogenM.monadStateHalogenM))(function (v1) {
-                  if (v1.m_connection instanceof Data_Maybe.Nothing) {
-                      return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
-                  };
-                  if (v1.m_connection instanceof Data_Maybe.Just) {
-                      return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(playerAction(Purlay_Examples_TigGame_Global.FrameTick.value))(function () {
-                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(v1.i_am_leader)(Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit)))(function () {
-                              var itGone = v1.m_connection.value0.my_peerId !== v1.gstate.it && !Data_Map_Internal.member(Data_Ord.ordInt)(v1.gstate.it)(v1.otherPieces);
-                              var iAmNewIt = (function () {
-                                  var v2 = Data_Map_Internal.findMin(v1.otherPieces);
-                                  if (v2 instanceof Data_Maybe.Just) {
-                                      return itGone && v1.m_connection.value0.my_peerId < v2.value0.key;
-                                  };
-                                  return itGone;
-                              })();
-                              return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(iAmNewIt)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateTigState(function (v2) {
-                                  return {
-                                      it: v1.m_connection.value0.my_peerId,
-                                      itActive: v2.itActive
-                                  };
-                              })))(function () {
-                                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(updateCanvas)(function () {
+                  return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)((function () {
+                      if (v1.m_connection instanceof Data_Maybe.Nothing) {
+                          return Control_Applicative.pure(Halogen_Query_HalogenM.applicativeHalogenM)(Data_Unit.unit);
+                      };
+                      if (v1.m_connection instanceof Data_Maybe.Just) {
+                          return Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)((function () {
+                              if (!v1.i_am_leader) {
+                                  return playerAction(Purlay_Examples_TigGame_Global.FrameTick.value);
+                              };
+                              if (v1.i_am_leader) {
+                                  return playerAndBallsAction(Purlay_Examples_TigGame_Global.FrameTick.value);
+                              };
+                              throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 284, column 11 - line 288, column 55): " + [ v1.i_am_leader.constructor.name ]);
+                          })())(function () {
+                              var itGone = v1.m_connection.value0.my_peerId !== v1.gstate.it && !Data_Map_Internal.member(Data_Ord.ordInt)(v1.gstate.it)(v1.objects);
+                              return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(itGone)((function () {
+                                  var m_newIt = getNewIt(v1.objects);
+                                  var iAmNewIt = Data_Maybe.maybe(true)(function (newIt) {
+                                      return newIt === v1.m_connection.value0.my_peerId;
+                                  })(m_newIt);
+                                  return Control_Applicative.when(Halogen_Query_HalogenM.applicativeHalogenM)(iAmNewIt)(Control_Bind.discard(Control_Bind.discardUnit)(Halogen_Query_HalogenM.bindHalogenM)(Control_Monad_State_Class.modify_(Halogen_Query_HalogenM.monadStateHalogenM)(updateTigState(function (v2) {
+                                      return {
+                                          it: v1.m_connection.value0.my_peerId,
+                                          itActive: v2.itActive
+                                      };
+                                  })))(function () {
                                       return broadcastAction(new SetIt(v1.m_connection.value0.my_peerId));
-                                  });
-                              }));
+                                  }));
+                              })());
                           });
-                      });
-                  };
-                  throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 334, column 7 - line 355, column 46): " + [ v1.m_connection.constructor.name ]);
+                      };
+                      throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 280, column 7 - line 298, column 48): " + [ v1.m_connection.constructor.name ]);
+                  })())(function () {
+                      return updateCanvas;
+                  });
               });
           };
-          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 201, column 18 - line 355, column 46): " + [ v.constructor.name ]);
+          throw new Error("Failed pattern match at Purlay.Examples.TigGame (line 192, column 18 - line 299, column 19): " + [ v.constructor.name ]);
       };
       return Halogen_Component.mkComponent({
           initialState: function (v) {

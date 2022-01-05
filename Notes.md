@@ -23,12 +23,12 @@
     * [X] holds a map of GameObjects
     * [X] can send an object action to one of more objects
       * automatically updating the map if the object(s) changed
-      * also returns a list of all changed objects
+      * also taking a process hook for each object change
     * [X] can do collision detection
       * focusing on a subset of objects, detecting and handling their collisions with all objects
         * some pairs of objects are ignored, determined by a given binary predicate
-      * also returns a list of all changed objects
-  * [ ] safe and reusable collision handling
+      * also taking a process hook for each collided object-pair
+  * [ ] safe and reusable collision handling using GameObjectStore
     * [ ] leader does all collision handling
 * Create other simple games
   * [ ] Add balls to tig game
