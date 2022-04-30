@@ -1,6 +1,11 @@
-# PureScript web-based P2P multiplayer game
+# PureScript P2P real-time multiplayer game
 
-This project is intended to be a template for creating simple PureScript web-based real-time multiplayer games.  The game is deliberately very simple: In a game of Tig, each player controls a character on a grid. "It" chases the others to "tig" them.
+This project is intended to be a template for creating simple PureScript web-based real-time multiplayer games with the following focus:  
+
+- **Decentralised architecture**: Players' clients interact mostly peer-to-peer over a minimal messaging middleware.
+- **Real-time coordination of smooth-moving objects**
+
+**Tig**, the *sample game*, is deliberately very simple: Each player controls a character on a grid. "It" chases the others to "tig" them.
 
 Players' browser instances communicate using broadcast messages via a web-socket broadcast server.  (A simple broadcast server is provided.)
 
